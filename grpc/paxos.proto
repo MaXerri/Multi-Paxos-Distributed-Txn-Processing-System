@@ -1,0 +1,168 @@
+syntax = "proto3";
+
+package paxos;
+
+import "google/protobuf/empty.proto";
+
+
+//Ballot Type
+message Ballot {
+    int32 counter = 1;
+    int32 node_id = 2;
+}
+
+// Messages
+
+// Client -> Leader
+message ClientRequest {
+    string client_id = 1;
+    int32 timestamp = 2;
+    string from_account = 3;
+    string to_account = 4;
+    float amount = 5;
+    bool read_only = 6;
+    string two_pc_msg = 7;
+    int32 from_node = 8;
+}
+
+// Leader -> ClientCan
+message ClientReply {
+    Ballot ballot = 1;
+    int32 timestamp = 2;
+    string client_id = 3;
+    bool success = 4;
+    bool from_this_term = 5;
+    int32 read_only_balance = 6;
+}
+
+// Leader election
+message PrepareRequest {
+    Ballot ballot = 1;
+    int32 node_id = 2; // identifies proposer
+}
+
+message PromiseResponse {
+    Ballot ballot = 1;
+    int32 node_id = 2; // who replied
+    bool promised = 3;
+    repeated AcceptedEntry accept_log = 4;
+}
+
+// New leader "view change"
+message NewViewRequest {
+    Ballot ballot = 1;
+    repeated AcceptedEntry accept_log = 2;
+}
+
+// For logging accepted values
+message AcceptedEntry {
+    Ballot ballot = 1;
+    int32 seqnum = 2;
+    ClientRequest request = 3;
+    int32 node_id = 4;
+    string two_pc_status = 5;
+    ClientRequest m = 6;
+    int32 new_leader = 7;
+}
+
+message CommitEntry {
+    Ballot ballot = 1;
+    int32 seqnum = 2;
+    ClientRequest request = 3;
+    string two_pc_status = 4;
+    ClientRequest m = 5;
+}
+
+// For generic ACKs (accept/commit responses)
+message Ack {
+    Ballot ballot = 1;
+    int32 node_id = 2;
+    bool accepted = 3;
+    int32 seqnum = 4;
+    int32 phase = 5;
+    string status = 6;
+}
+
+// Response from client
+message TransactionAck {
+    bool accepted = 1; // could also be alive_status
+}
+
+message AliveUpdateRequest {
+    bool is_alive = 1;
+    bool kill_leader = 2;
+    bool prompt_pause = 3;
+    bool recover = 4;
+    bool reset_state = 5;
+    bool reshard = 6;
+    ShardMap shard_map = 7;
+    
+}
+
+message DBEntry {
+    string client = 1;
+    int32 balance = 2;
+}
+
+message NodeInfo {
+    string print_log = 1;
+    repeated DBEntry database = 2;
+    string status = 3;
+    repeated NewViewRequest newviews = 4;
+    
+}
+
+message InfoRequest {
+    bool print_log = 1;
+    bool print_db = 2;
+    bool print_status = 3;
+    bool print_newview = 4;
+
+    int32 seqnum = 5;
+}
+
+message TwoPCMsg {
+    string type = 1;
+    string s = 2;
+    string r = 3;
+    int32 amt = 4;
+    ClientRequest m = 5; // should be the digest of the request message
+}
+
+message MoveOnRequest {
+    string client_id = 1;
+}
+
+message ShardMapEntry {
+    int32 item_id = 1;
+    int32 cluster = 2;
+}
+
+message ShardMap {
+    repeated ShardMapEntry entry = 1;
+}
+
+service ClientService {
+    rpc SubmitTransaction(ClientRequest) returns (TransactionAck);
+    rpc SendClientReply(ClientReply) returns (TransactionAck);
+}
+
+// -------------------------
+// Service
+// -------------------------
+service Paxos {
+    rpc Prepare(PrepareRequest) returns (PromiseResponse);
+    rpc Accept(AcceptedEntry) returns (Ack);
+    rpc Commit(CommitEntry) returns (Ack);
+    rpc SendClientRequest(ClientRequest) returns (TransactionAck); // used to be clientreply but this could get mixed up with actual reply
+    rpc NewView(NewViewRequest) returns (Ack);
+    // Backup -> Leader: accept acknowledgments
+    rpc ReceiveAcceptAck(Ack) returns (google.protobuf.Empty);
+
+    rpc SendAliveUpdate(AliveUpdateRequest) returns (TransactionAck);
+    rpc GetNodeInfo(InfoRequest) returns (NodeInfo);
+    rpc SendMoveOn(MoveOnRequest) returns (TransactionAck);
+
+    rpc SendTwoPCMsg(TwoPCMsg) returns (google.protobuf.Empty);
+
+}
