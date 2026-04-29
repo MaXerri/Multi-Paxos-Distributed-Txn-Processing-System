@@ -9,6 +9,12 @@ This project implements a distributed transaction processing system using Multi-
 - **Cross-Shard Transactions:** Transactions spanning multiple clusters use 2PC for atomicity.
 - **Benchmarking:** A generation engine to test performance under different workloads
 
+## System Design
+
+![System Design](sys_design.png)
+
+We use a sharded structure with c clusters. Nodes within a single cluster replicate a shard — a subset of the system state — so each cluster is a replica group responsible for that shard. Intra-cluster agreement is achieved with Multi-Paxos; cross-shard (cross-cluster) transactions are coordinated using Two-Phase Commit.
+
 ## How to Run
 
 Before running the project, ensure that you have consistent versions of **protobuf** and **gRPC** installed on your system. Mismatched versions may cause build or runtime errors. Refer to your language's documentation for installation and version management instructions.
