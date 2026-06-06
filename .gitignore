@@ -1,0 +1,4 @@
+build/
+.vscode/
+kahypar/
+__pycache__/
