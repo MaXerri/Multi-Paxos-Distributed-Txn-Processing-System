@@ -76,31 +76,56 @@ def expect_output(child, pattern, timeout=10):
         )
 
 
-def check_balance(child, item_id, expected, timeout=10):
-    """Soft-assert the balance of an account on every node.
+def read_balance(child, node_id, timeout=10):
+    """Read and return the balance reported by a specific node without asserting.
 
-    Waits for the first 'Balance for item <item_id>: <value>' line and
+    Use as a pivot to determine which outcome occurred before running
+    the corresponding set of check_balance assertions.
+
+    Args:
+        child:    pexpect.spawn instance.
+        node_id:  integer node id whose balance line to match.
+        timeout:  seconds to wait for output.
+
+    Returns:
+        The integer balance reported by that node.
+    """
+    pattern = rf"Node {node_id} Balance for item \d+:\s*(\d+)"
+    index = child.expect([pattern, pexpect.EOF, pexpect.TIMEOUT], timeout=timeout)
+    if index == 1:
+        pytest.fail(f"System crash while reading balance on node {node_id}")
+    if index == 2:
+        if not child.isalive():
+            pytest.fail(f"System crash — process died while reading balance on node {node_id}")
+        pytest.fail(f"Node {node_id} balance: no output received within {timeout}s")
+    return int(child.match.group(1))
+
+
+def check_balance(child, node_id, expected, timeout=10):
+    """Soft-assert the balance reported by a specific node.
+
+    Waits for the line 'Node <node_id> Balance for item <any>: <value>' and
     compares the numeric value to expected. All check_balance calls in a
     test run even if one fails.
 
     Args:
         child:    pexpect.spawn instance.
-        item_id:  integer account / item id passed to PrintBalance.
+        node_id:  integer node id whose balance line to match.
         expected: expected integer balance, or a list of acceptable values
                   when more than one outcome is correct (e.g. [10, 11]).
         timeout:  seconds to wait for output.
     """
-    pattern = rf"Balance for item {item_id}:\s*(\d+)"
+    pattern = rf"Node {node_id} Balance for item \d+:\s*(\d+)"
     index = child.expect([pattern, pexpect.EOF, pexpect.TIMEOUT], timeout=timeout)
     if index == 1:
-        pytest.fail(f"System crash — process exited while checking balance of item {item_id}")
+        pytest.fail(f"System crash — process exited while checking balance on node {node_id}")
     if index == 2:
         if not child.isalive():
-            pytest.fail(f"System crash — process died while checking balance of item {item_id}")
-        check.fail(f"Balance for item {item_id}: no output received within {timeout}s")
+            pytest.fail(f"System crash — process died while checking balance on node {node_id}")
+        check.fail(f"Node {node_id} balance: no output received within {timeout}s")
         return
     actual = int(child.match.group(1))
     if isinstance(expected, list):
-        check.is_in(actual, expected, msg=f"Balance for item {item_id}")
+        check.is_in(actual, expected, msg=f"Node {node_id} balance")
     else:
-        check.equal(actual, expected, msg=f"Balance for item {item_id}")
+        check.equal(actual, expected, msg=f"Node {node_id} balance")

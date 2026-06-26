@@ -31,17 +31,17 @@ def test_simple_transfer_balance():
         expect_output(child, PROMPT_PATTERN, timeout=60)
 
         child.sendline("PrintBalance 2")
-        check_balance(child, item_id=2, expected=11)
+        check_balance(child, node_id=1, expected=11)
 
         expect_output(child, PROMPT_PATTERN, timeout=10)
 
         child.sendline("PrintBalance 1")
-        check_balance(child, item_id=1, expected=9)
+        check_balance(child, node_id=1, expected=9)
 
         expect_output(child, PROMPT_PATTERN, timeout=10)
 
         child.sendline("PrintBalance 3")
-        check_balance(child, item_id=3, expected=10)
+        check_balance(child, node_id=1, expected=10)
 
         expect_output(child, PROMPT_PATTERN, timeout=10)
         child.sendline("Continue")
