@@ -52,14 +52,31 @@ make -j4
 - Custom cluster configurations
 - Resharding via hypergraph partitioning
 
-## Bonuses Completed
+## Integration Tests
 
-- Custom clusters
+To run the integration tests, ensure the binary is built and dependencies are installed, then from the project root:
+
+```bash
+pip install -r requirements.txt
+pytest tests/integration/
+```
+
 
 ## File Structure
 
-- `paxos_node`: Main executable for running a node in the system
-- `README.md`: Project documentation
+```
+2pc_paxos/
+├── src/                  # C++ source (Paxos node, 2PC client, launch orchestration)
+├── tests/
+│   ├── integration/      # Python integration tests (pytest + pexpect)
+│   └── test_data/        # Input CSVs defining transaction sets and node failures
+├── database/             # SQLite databases persisted per node at runtime
+├── build/                # Compiled output; paxos_node binary lives here after make
+├── grpc/                 # gRPC third-party dependency
+├── kahypar/              # Hypergraph partitioner dependency
+├── CMakeLists.txt
+└── requirements.txt      # Python test dependencies
+```
 
 ## References
 
