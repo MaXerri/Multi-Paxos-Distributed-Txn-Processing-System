@@ -2,6 +2,7 @@
 #include "paxos_node.h"
 #include <assert.h>
 #include "paxos_client.h"
+#include "log.h"
 
 
 PrepareCallData::PrepareCallData(paxos::Paxos::AsyncService* service, ServerCompletionQueue* cq, PaxosNode* paxos_node)
@@ -74,7 +75,7 @@ void CommitCallData::Proceed() {
         status_ = FINISH;
         responder_.Finish(reply_, Status::OK, this);
     } else if (status_ == FINISH) {
-        std::cout << "[Node " << paxos_node_->GetNodeId() << "] Commit call finished" << std::endl;
+        LOG << "[Node " << paxos_node_->GetNodeId() << "] Commit call finished" << std::endl;
         delete this;
     }
 }
@@ -101,13 +102,13 @@ void NewViewCallData::Proceed() {
     } else {
         assert(status_ == FINISH);
         paxos_node_->OnNewViewCallFinished(this); // avoid complications
-        std::cout << "[DEBUG] NewViewCallData finished for node " << paxos_node_->GetNodeId() << std::endl;
+        LOG << "[DEBUG] NewViewCallData finished for node " << paxos_node_->GetNodeId() << std::endl;
         delete this;
     }
 }
 
 void NewViewCallData::Respond(const paxos::Ack& reply) {
-    std::cout << "[DEBUG] NewViewCallData hit respond for node " << paxos_node_->GetNodeId() << std::endl;
+    LOG << "[DEBUG] NewViewCallData hit respond for node " << paxos_node_->GetNodeId() << std::endl;
     reply_ = reply;
     status_ = FINISH;
     responder_.Finish(reply_, grpc::Status::OK, this);
@@ -136,7 +137,7 @@ void SendClientRequestCallData::Proceed() {
         new SendClientRequestCallData(service_, cq_, paxos_node_);
 
         // Log the received request
-        std::cout << "[DEBUG] Node " << paxos_node_->GetNodeId() 
+        LOG << "[DEBUG] Node " << paxos_node_->GetNodeId() 
                   << " received ClientRequest to client " << request_.to_account() 
                   << " from client " << request_.from_account() << std::endl;
 
@@ -145,7 +146,7 @@ void SendClientRequestCallData::Proceed() {
         paxos_node_->HandleClientRequest(request_, this); //modified for ...
 
     } else if (status_ == FINISH) {
-        std::cout << "[DEBUG] SendClientRequestCallData finished for node " << paxos_node_->GetNodeId() << std::endl;
+        LOG << "[DEBUG] SendClientRequestCallData finished for node " << paxos_node_->GetNodeId() << std::endl;
         delete this; // cleanup
     }
 }
@@ -184,7 +185,7 @@ void SubmitTransactionCallData::Proceed() {
         new SubmitTransactionCallData(service_, cq_);
 
         // Process the transaction (placeholder)
-        std::cout << "Received transaction from client " 
+        LOG << "Received transaction from client " 
                   << request_.client_id() 
                   << " " << request_.from_account() 
                   << " -> " << request_.to_account()
@@ -196,7 +197,7 @@ void SubmitTransactionCallData::Proceed() {
         responder_.Finish(reply_, grpc::Status::OK, this);
     } else {
         assert(status_ == FINISH);
-        std::cout << "[DEBUG] SubmitTransactionCallData finished "
+        LOG << "[DEBUG] SubmitTransactionCallData finished "
                   << "for client " << request_.client_id() << std::endl;
         delete this;
     }
@@ -230,7 +231,7 @@ void ReceiveAcceptAckCallData::Proceed() {
         responder_.Finish(reply_, grpc::Status::OK, this);
     } else {
         assert(status_ == FINISH);
-        std::cout << "[DEBUG] ReceiveAcceptAckCallData finished for node " << paxos_node_->GetNodeId() << " and seq: " << request_.seqnum() << std::endl;
+        LOG << "[DEBUG] ReceiveAcceptAckCallData finished for node " << paxos_node_->GetNodeId() << " and seq: " << request_.seqnum() << std::endl;
         delete this;
     }
 }
@@ -263,7 +264,7 @@ void AliveUpdateCallData::Proceed() {
 
     } else {
         assert(status_ == FINISH);
-        std::cout << "[DEBUG] AliveUpdateCallData finished for node " << paxos_node_->GetNodeId() << std::endl;
+        LOG << "[DEBUG] AliveUpdateCallData finished for node " << paxos_node_->GetNodeId() << std::endl;
         delete this;
     }
 }
@@ -315,7 +316,7 @@ void MoveOnCallData::Proceed() {
         // Spawn a new handler for the next incoming MoveOn RPC
         new MoveOnCallData(static_cast<paxos::Paxos::AsyncService*>(service_), cq_, paxos_node_);
 
-        std::cout << "[Node " << paxos_node_->GetNodeId() 
+        LOG << "[Node " << paxos_node_->GetNodeId() 
                   << "] Received MoveOn request for client " << request_.client_id() << std::endl;
 
         // Handle the MoveOn logic
@@ -350,7 +351,7 @@ void PrepareClientCallData::OnComplete(bool ok) {
     } else {
         std::cerr << "Prepare RPC failed (network/timeout or error)" << std::endl;
     }
-    std::cout << "[DEBUG] PrepareClientCallData finished for node " << node_->GetNodeId() << std::endl;
+    LOG << "[DEBUG] PrepareClientCallData finished for node " << node_->GetNodeId() << std::endl;
     delete this;
 }
 
@@ -362,22 +363,22 @@ NewViewClientCallData::NewViewClientCallData(std::shared_ptr<paxos::Paxos::Stub>
                                              const paxos::NewViewRequest& request)
     : stub_(stub), cq_(cq), node_(node), request_(request) 
 {
-    std::cout << "[DEBUG] NewViewClientCallData constructed for node "
+    LOG << "[DEBUG] NewViewClientCallData constructed for node "
               << node_->GetNodeId() << std::endl;
     response_reader_ = stub_->AsyncNewView(&context_, request_, cq_);
     response_reader_->Finish(&reply_, &status_, this);
-    std::cout << "[DEBUG] finish called for newview RPC sent by " << node_->GetNodeId() << std::endl;
+    LOG << "[DEBUG] finish called for newview RPC sent by " << node_->GetNodeId() << std::endl;
 }
 
 void NewViewClientCallData::OnComplete(bool ok) {
     if (ok && status_.ok()) {
-        std::cout << "NewView RPC to node " << request_.ballot().node_id() 
+        LOG << "NewView RPC to node " << request_.ballot().node_id() 
                   << " succeeded." << std::endl;
 
     } else {
         std::cerr << "NewView RPC failed for node " << node_->GetNodeId() << ": " << status_.error_message() << std::endl;
     }
-    std::cout << "[DEBUG] NewViewClientCallData deleted for node " << node_->GetNodeId() << std::endl;
+    LOG << "[DEBUG] NewViewClientCallData deleted for node " << node_->GetNodeId() << std::endl;
     delete this;
 }
 
@@ -423,7 +424,7 @@ void AliveAsyncCall::OnComplete(bool ok) {
                   << " alive update failed: " << status_.error_message() << "\n";
     }
     else if (ok && status_.ok()) {
-        std::cout << "[AliveAsyncCall] Node " << node_id_
+        LOG << "[AliveAsyncCall] Node " << node_id_
                   << " alive update succeeded.\n";
         //callback_(true); // notify success
     }
@@ -459,7 +460,7 @@ void AcceptClientCallData::OnComplete(bool ok) {
 
 void AcceptClientCallData::Cancel() {
     // Safe to call from any thread.
-    std::cout << "[Leader] Cancelling Accept RPC for seq " << request_.seqnum() << std::endl;
+    LOG << "[Leader] Cancelling Accept RPC for seq " << request_.seqnum() << std::endl;
     context_.TryCancel();  // signals cancellation
 }
 
@@ -479,7 +480,7 @@ CommitClientCallData::CommitClientCallData(std::shared_ptr<paxos::Paxos::Stub> s
 void CommitClientCallData::OnComplete(bool ok) {
     if (ok && status_.ok()) {
 
-        std::cout << "[Client] Successfully sent Commit for seq=" << request_.seqnum()
+        LOG << "[Client] Successfully sent Commit for seq=" << request_.seqnum()
                   << " to backup node " << std::endl;
     } else {
         std::cerr << "[Client] Failed to send Commit for seq=" << request_.seqnum()
@@ -505,7 +506,7 @@ ClientCallData::ClientCallData(std::shared_ptr<paxos::ClientService::Stub> stub,
 void ClientCallData::OnComplete(bool ok) {
     if (ok && status_.ok()) {
 
-        std::cout << "[Node] Successfully sent ClientReply to client "
+        LOG << "[Node] Successfully sent ClientReply to client "
                   << request_.client_id() << ", ack=" << reply_ack_.accepted() << "\n";
     } else {
         std::cerr << "[Node] Failed to deliver ClientReply to client "
@@ -526,7 +527,7 @@ AsyncAcceptAckCall::AsyncAcceptAckCall(std::shared_ptr<paxos::Paxos::Stub> stub,
 {
     response_reader = stub->AsyncReceiveAcceptAck(&context, ack, cq);
     response_reader->Finish(&reply_, &status, this);
-    std::cout << "[Node " << node_id_ << "] finish called for asyncacceptack" << std::endl;
+    LOG << "[Node " << node_id_ << "] finish called for asyncacceptack" << std::endl;
 }
 
 void AsyncAcceptAckCall::OnComplete(bool ok) {
@@ -535,13 +536,13 @@ void AsyncAcceptAckCall::OnComplete(bool ok) {
                   << ack.seqnum() << ", ballot: (" << ack.ballot().counter() << ", "
                   << ack.ballot().node_id() << ") with error: " << status.error_message() << "\n";
     } else {
-        std::cout << "[Node " << node_id_ << "] AcceptAck successfully sent.\n";
+        LOG << "[Node " << node_id_ << "] AcceptAck successfully sent.\n";
     }
     delete this;
 }
 
 void AsyncAcceptAckCall::Cancel() {
-    std::cout << "[Node " << node_id_ << "] Cancelling AcceptAck RPC for seq: "
+    LOG << "[Node " << node_id_ << "] Cancelling AcceptAck RPC for seq: "
                 << ack.seqnum() << std::endl;
     context.TryCancel();
 }
@@ -562,11 +563,11 @@ void AsyncClientReplyCallData::OnComplete(bool ok) {
     if (!ok) {
         std::cerr << "[Leader] ClientReply RPC failed to complete (network/queue issue)\n";
     } else if (status_.ok()) {
-        std::cout << "[Leader] Successfully sent reply to client "
+        LOG << "[Leader] Successfully sent reply to client "
                   << request_.client_id()
                   << " (ts=" << request_.timestamp() << ")\n";
     } else {
-        std::cout << "[Leader] Failed to send reply to client "
+        LOG << "[Leader] Failed to send reply to client "
                   << request_.client_id()
                   << " (ts=" << request_.timestamp() << ") "
                   << "error=" << status_.error_message() << std::endl;
@@ -611,7 +612,7 @@ AsyncCall::AsyncCall(std::shared_ptr<paxos::Paxos::Stub> stub,
     response_reader->Finish(&reply, &status, this); // 'this' used as tag for completion queue
 
     // LOG HERE: confirm RPC is queued
-    std::cout << "[AsyncCall] Node sending RPC to target: "
+    LOG << "[AsyncCall] Node sending RPC to target: "
               << request_.to_account()  // or some unique identifier
               << ", timestamp: " << request_.timestamp() << std::endl;
 }
@@ -619,9 +620,9 @@ AsyncCall::AsyncCall(std::shared_ptr<paxos::Paxos::Stub> stub,
 void AsyncCall::OnComplete(bool ok) {
     if (ok && status.ok()) {
         // completion_callback(reply);
-        std::cout << "[AsyncCall] RPC succeeded: " << reply.DebugString() << std::endl;
+        LOG << "[AsyncCall] RPC succeeded: " << reply.DebugString() << std::endl;
     } else if (!status.ok()) {
-        std::cout << "[AsyncCall] RPC failed: " << status.error_message() << std::endl;
+        LOG << "[AsyncCall] RPC failed: " << status.error_message() << std::endl;
     }
 
     // Cleanup self
@@ -646,13 +647,13 @@ AsyncServerCall::AsyncServerCall(paxos::ClientService::AsyncService* service,
 
 void AsyncServerCall::Proceed() {
     if (status_ == CREATE) {
-        std::cout << "[DEBUG] Call data starting handleSendClientReply" << std::endl;
+        LOG << "[DEBUG] Call data starting handleSendClientReply" << std::endl;
         status_ = PROCESS;
         service_->RequestSendClientReply(&ctx_, &request_, &responder_, cq_, cq_, this);
     } else if (status_ == PROCESS) {
 
         new AsyncServerCall(service_, cq_, client_);
-        // std::cout << "[DEBUG] Call data starting hadlelleaderreply" << std::endl;   
+        // LOG << "[DEBUG] Call data starting hadlelleaderreply" << std::endl;   
         client_->HandleLeaderReply(request_);
 
         // Send dummy ack back to the caller
@@ -692,14 +693,14 @@ void TwoPCCallData::Proceed() {
 
         }
         else {
-            std::cout << "[Node " << paxos_node_->GetNodeId() << "] Unknown TwoPCMsg type: " << request_.type() << std::endl;
+            LOG << "[Node " << paxos_node_->GetNodeId() << "] Unknown TwoPCMsg type: " << request_.type() << std::endl;
         }
         
         status_ = FINISH;
         responder_.Finish(reply_, Status::OK, this);
     } else {
         assert(status_ == FINISH);
-        std::cout << "[Node " << paxos_node_->GetNodeId() << "] 2PC call finished" << std::endl;
+        LOG << "[Node " << paxos_node_->GetNodeId() << "] 2PC call finished" << std::endl;
         delete this;
     }
 }
@@ -720,7 +721,7 @@ TwoPCClientCallData::TwoPCClientCallData(std::shared_ptr<paxos::Paxos::Stub> stu
 void TwoPCClientCallData::OnComplete(bool ok) {
     if (ok && status_.ok()) {
 
-        std::cout << "[Client] Successfully sent TwoPCMsg"<< std::endl;
+        LOG << "[Client] Successfully sent TwoPCMsg"<< std::endl;
     } else {
         std::cerr << "[Client] Failed to send TwoPCMsg" << " Status: " << status_.error_message() << std::endl;
 

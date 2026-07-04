@@ -1,5 +1,6 @@
 #include "paxos_node.h"
 #include "call_data.h"
+#include "log.h"
 #include <iostream>
 #include <chrono>
 #include <thread>
@@ -36,7 +37,7 @@ PaxosNode::PaxosNode(int id, const std::string& address, Role role, const std::u
             auto channel = grpc::CreateCustomChannel(address, grpc::InsecureChannelCredentials(), args);
             client_stubs_[id] = paxos::ClientService::NewStub(channel);
         }
-        std::cout << "Post cli stub gen" << std::endl;
+        LOG << "Post cli stub gen" << std::endl;
         
         int n = peer_addresses_.size();
         divisor_ = n / num_clusters_;
@@ -46,11 +47,11 @@ PaxosNode::PaxosNode(int id, const std::string& address, Role role, const std::u
         cluster_id_ = (node_id_ -1) / divisor_ + 1;
         f_ =  (divisor_ - 1) / 2 ;
 
-        std::cout << "Node " << node_id_ << " is within the cluster of nodes: " << intra_c_nid_range_.first << " to " << intra_c_nid_range_.second << std::endl;
+        LOG << "Node " << node_id_ << " is within the cluster of nodes: " << intra_c_nid_range_.first << " to " << intra_c_nid_range_.second << std::endl;
         
         for (int i = 1; i <= num_clusters_ ; ++i) {
             cluster_leaders_[i] = divisor_ * (i - 1) + 1;
-            std::cout << "Cluster " << i << " leader is Node " << cluster_leaders_[i] << std::endl;
+            LOG << "Cluster " << i << " leader is Node " << cluster_leaders_[i] << std::endl;
         }
         InitializeDatabase();
         InitDB();
@@ -60,29 +61,26 @@ PaxosNode::PaxosNode(int id, const std::string& address, Role role, const std::u
 void PaxosNode::Run() {
     // Build gRPC server
     grpc::ServerBuilder builder;
-    std::cout << address_ << std::endl;
-    std::cout << "Binding to: [" << address_ << "]" << std::endl;
+    LOG << address_ << std::endl;
+    LOG << "Binding to: [" << address_ << "]" << std::endl;
     int port = 0;
     builder.AddListeningPort(address_, grpc::InsecureServerCredentials(), &port);
-    std::cout << "AddListeningPort returned: " << port << std::endl;
-    std::cout.flush();
-    std::cout << "11" << std::endl;
+    LOG << "AddListeningPort returned: " << port << std::endl;
+    LOG << std::flush;
+    LOG << "11" << std::endl;
     builder.RegisterService(&service_);
     cq_ = builder.AddCompletionQueue(); //server side cq
-    std::cout << "22" << std::endl;
+    LOG << "22" << std::endl;
     server_ = builder.BuildAndStart();
 
 
-    std::cout << "jonsin" << std::endl;
-
-
-    std::cout << "Node " << node_id_ << " running at " << address_ << std::endl;
+    LOG << "Node " << node_id_ << " running at " << address_ << std::endl;
 
     // initialize peer_stubs_ and do include yourself
     for (const auto& [id, address] : peer_addresses_) {
         peer_stubs_[id] = paxos::Paxos::NewStub(grpc::CreateChannel(address, grpc::InsecureChannelCredentials()));
     }
-    std::cout << "Node " << node_id_ << " initialized stubs for all peers." << std::endl;
+    LOG << "Node " << node_id_ << " initialized stubs for all peers." << std::endl;
 
 
     // Start election timer (if backup)
@@ -105,7 +103,7 @@ void PaxosNode::Run() {
         new TwoPCCallData(&service_, cq_.get(), this);
     }
 
-    std::cout<<"All Handlers initialized" << std::endl;
+    LOG<<"All Handlers initialized" << std::endl;
     
     // start server side event loop threads
     int numThreads = 3 ; // pool 
@@ -135,7 +133,7 @@ void PaxosNode::Run() {
     client_cq_running_.store(false); // stop client CQ polling
     server_->Shutdown(); 
     client_cq_->Shutdown(); 
-    std::cout << "Node " << node_id_ << " shutting down." << std::endl;
+    LOG << "Node " << node_id_ << " shutting down." << std::endl;
 }
 
 // Server Side PaxosNode Polling Queue
@@ -147,7 +145,7 @@ void PaxosNode::HandleRpcs() {
             static_cast<CallData*>(tag)->Proceed();
         }
     }
-    std::cout << "Node " << node_id_ << " completion queue polling thread exiting." << std::endl;
+    LOG << "Node " << node_id_ << " completion queue polling thread exiting." << std::endl;
 }
 
 // Poll function for client-side asyc calls
@@ -161,13 +159,13 @@ void PaxosNode::PollClientCompletionQueue() {
             call->OnComplete(ok);
         }
     }
-    std::cout << "Node " << node_id_ << " client completion queue polling thread exiting." << std::endl;
+    LOG << "Node " << node_id_ << " client completion queue polling thread exiting." << std::endl;
 }
 
 
 void PaxosNode::HandleClientRequest(const paxos::ClientRequest& request, SendClientRequestCallData* call_data) {
     if (!alive_.load()) {
-        std::cout << "Node " << node_id_ << " is dead. Ignoring client request." << std::endl;
+        LOG << "Node " << node_id_ << " is dead. Ignoring client request." << std::endl;
 
         paxos::TransactionAck reply;
         call_data->Respond(reply); // call object needs to be finished
@@ -181,7 +179,7 @@ void PaxosNode::HandleClientRequest(const paxos::ClientRequest& request, SendCli
 
     //new - force election on first node for each
     if (current_ballot_.node_id % divisor_ == 1 && current_ballot_.counter == 0 && first_txn_received_.load()) {
-        std::cout << "Node " << node_id_ << " forcing election on first request. this was ts=" << request.timestamp() << std::endl;
+        LOG << "Node " << node_id_ << " forcing election on first request. this was ts=" << request.timestamp() << std::endl;
         first_txn_received_ = false;
         {
             std::lock_guard<std::mutex> lock(queued_mutex_);
@@ -191,11 +189,11 @@ void PaxosNode::HandleClientRequest(const paxos::ClientRequest& request, SendCli
         return;
     }
     else {
-        std::cout << "Node " << node_id_ << " " << current_ballot_.counter << " " << first_txn_received_.load() << std::endl;
+        LOG << "Node " << node_id_ << " " << current_ballot_.counter << " " << first_txn_received_.load() << std::endl;
     }
 
     if (in_election_ || (leader_id_ == -1 && role_ == Role::BACKUP)) {
-        std::cout << "Node " << node_id_ << " is in election or no leader known. Queuing client request." << std::endl;
+        LOG << "Node " << node_id_ << " is in election or no leader known. Queuing client request." << std::endl;
         {
             std::lock_guard<std::mutex> lock(queued_mutex_);
             queued_client_requests_.push_back({request, call_data});
@@ -207,13 +205,13 @@ void PaxosNode::HandleClientRequest(const paxos::ClientRequest& request, SendCli
 }
 
 void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendClientRequestCallData* call_data) {
-    std::cout << "Node " << node_id_ << " received ClientRequest from client "
+    LOG << "Node " << node_id_ << " received ClientRequest from client "
               << request.from_account() << " for amount " << request.amount()
               << " from account " << request.from_account()
               << " to account " << request.to_account() << std::endl;
 
     if (request.from_account()==""){
-        std::cout << "[ERROR] Invalid client request with empty from_account!" << std::endl;
+        LOG << "[ERROR] Invalid client request with empty from_account!" << std::endl;
         paxos::TransactionAck reply;
         call_data->Respond(reply); // call object needs to be finished
         return;
@@ -226,7 +224,7 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
             return;
         }
 
-        std::cout << "Node " << node_id_ << " not leader - forwarding request to leader node "
+        LOG << "Node " << node_id_ << " not leader - forwarding request to leader node "
                   << leader_id_ << std::endl;
 
         if (leader_id_==node_id_){
@@ -234,10 +232,10 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
             std::cerr << "Rare case when the initial election timer has 2 nodes which time out exactly at the same time to the millisecond" << std::endl;
             std::abort();
         }
+        new AsyncCall(peer_stubs_[leader_id_], client_cq_.get(), request, nullptr);
+
         paxos::TransactionAck reply;
         call_data->Respond(reply);
-
-        new AsyncCall(peer_stubs_[leader_id_], client_cq_.get(), request, nullptr);
 
         return;
     }
@@ -248,15 +246,16 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
         auto it = last_reply_per_client_.find(request.from_account()); //TODO
         if (it != last_reply_per_client_.end() && it->second.timestamp() == request.timestamp()) { // new
             
-            std::cout << "timestamp match for client " << request.from_account() << ": " << request.timestamp() << std::endl;
+            LOG << "timestamp match for client " << request.from_account() << ": " << request.timestamp() << std::endl;
             // kill call data
+            std::string from_acct = request.from_account(); // capture before Respond() may free call_data
             paxos::TransactionAck acks; // does not need to be filled out
             call_data->Respond(acks);
 
             // auto* call = new AsyncClientReplyCallData(client_stubs_[request.from_account()], client_cq_.get(), it->second);
 
-            std::cout << "Node " << node_id_ << " detected duplicate client request from client "
-                      << request.from_account() << " - responding with cached reply." << std::endl;
+            LOG << "Node " << node_id_ << " detected duplicate client request from client "
+                      << from_acct << " - responding with cached reply." << std::endl;
             //*reply = it->second;
             return;
         }
@@ -279,7 +278,7 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
         reply.set_from_this_term(true);
         reply.set_read_only_balance(accounts_[std::stoi(request.from_account())]);
         
-        std::cout << "Node " << node_id_ << " processing read-only request for account "
+        LOG << "Node " << node_id_ << " processing read-only request for account "
                   << request.from_account() << " with balance " << accounts_[std::stoi(request.from_account())] << std::endl;
 
                   
@@ -287,13 +286,13 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
             std::lock_guard<std::mutex> lock(client_mutex_);
 
             if (handled_ro_requests_.find(request.timestamp()) == handled_ro_requests_.end()) {
-                std::cout << "Node " << node_id_ << " recording read-only request from client "
+                LOG << "Node " << node_id_ << " recording read-only request from client "
                           << request.from_account() << std::endl;
                 last_reply_per_client_[request.from_account()] = reply;
                 handled_ro_requests_.insert(request.timestamp());
             }
             else {
-                std::cout << "Node " << node_id_ << " detected duplicate read-only request from client "
+                LOG << "Node " << node_id_ << " detected duplicate read-only request from client "
                           << request.from_account() << " - ignoring." << std::endl;
                 paxos::TransactionAck ack;
                 call_data->Respond(ack); // clean up the call data
@@ -321,11 +320,11 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
 
         // try to aquire locks
         if (balance_locks_[std::stoi(request.from_account())].try_lock()) {
-            std::cout << "Node " << node_id_ << " acquired lock for from_account "
+            LOG << "Node " << node_id_ << " acquired lock for from_account "
                     << request.from_account() << std::endl;
         }
         else{
-            std::cout << "Node " << node_id_ << " LEADER could not acquire lock for from_account "
+            LOG << "Node " << node_id_ << " LEADER could not acquire lock for from_account "
                     << request.from_account() << " - rejecting request." << std::endl;
             paxos::TransactionAck reply;
             call_data->Respond(reply);
@@ -337,11 +336,11 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
 
         if (intra_shard) {
             if (balance_locks_[std::stoi(request.to_account())].try_lock()) {
-                std::cout << "Node " << node_id_ << " acquired lock for to_account "
+                LOG << "Node " << node_id_ << " acquired lock for to_account "
                         << request.to_account() << std::endl;
             }
             else{
-                std::cout << "Node " << node_id_ << " INTRA-SHARD could not acquire lock for to_account "
+                LOG << "Node " << node_id_ << " INTRA-SHARD could not acquire lock for to_account "
                         << request.to_account() << " - rejecting request and releasing prior lock." << std::endl;
                 
                 balance_locks_[std::stoi(request.from_account())].unlock();
@@ -354,10 +353,10 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
 
         // send to leader of partcipant cluster:
         if (!intra_shard && participant == false) {
-            std::cout << "Node " << node_id_ << " sending 2pc prepare to participant cluster leader." << std::endl;
+            LOG << "Node " << node_id_ << " sending 2pc prepare to participant cluster leader." << std::endl;
 
             int participant_cluster_id_ = shard_map_[r];
-            std::cout << "Node " << node_id_ << " identified part cluster as " << participant_cluster_id_ << " for to_account " << request.to_account() << std::endl;
+            LOG << "Node " << node_id_ << " identified part cluster as " << participant_cluster_id_ << " for to_account " << request.to_account() << std::endl;
             paxos::ClientRequest twopc_request;
             twopc_request.CopyFrom(request);
             twopc_request.set_two_pc_msg("PREPARE");
@@ -370,7 +369,7 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
             in_flight_two_pc_prepares_[request.timestamp()].last_send = std::chrono::steady_clock::now();
             in_flight_two_pc_prepares_[request.timestamp()].sent = true;
 
-            std::cout << "Node " << node_id_ << " created TwoPCMsg for timestamp " << request.timestamp() << " to account "  << msg_2pc.m().to_account() << std::endl;
+            LOG << "Node " << node_id_ << " created TwoPCMsg for timestamp " << request.timestamp() << " to account "  << msg_2pc.m().to_account() << std::endl;
             new AsyncCall(peer_stubs_[cluster_leaders_[participant_cluster_id_]], client_cq_.get(), twopc_request, nullptr);
         }
     }
@@ -378,15 +377,15 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
         // set new leader
         if (request.two_pc_msg() == "PREPARE" && request.from_node() != cluster_leaders_[shard_map_[s]]) {
             cluster_leaders_[shard_map_[s]] = request.from_node();
-            std::cout << "Node " << node_id_ << " updated cluster leader for cluster "
+            LOG << "Node " << node_id_ << " updated cluster leader for cluster "
                       << shard_map_[s] << " to Node " << request.from_node() << std::endl;
         }
         if (balance_locks_[r].try_lock()) {
-            std::cout << "Node " << node_id_ << " acquired lock for to_account "
+            LOG << "Node " << node_id_ << " acquired lock for to_account "
                     << request.to_account() << std::endl;
         }
         else{
-            std::cout << "Node " << node_id_ << " PARTICIPANT could not acquire lock for to_account "
+            LOG << "Node " << node_id_ << " PARTICIPANT could not acquire lock for to_account "
                     << request.to_account() << " - rejecting request." << std::endl;
             
             participant_abort = true;
@@ -422,7 +421,7 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
         std::lock_guard<std::mutex> lock(pending_mutex_);
 
         if (pending_or_completed_ts_.find(request.timestamp()) != pending_or_completed_ts_.end()) {
-            std::cout << "Node " << node_id_ << " found existing pending request with timestamp "
+            LOG << "Node " << node_id_ << " found existing pending request with timestamp "
                       << request.timestamp() << " - ignoring duplicate." << std::endl;
             paxos::TransactionAck reply;
             call_data->Respond(reply); // clean up the call data
@@ -454,7 +453,7 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
     // save digest (timestampt atm) to seqnum map. Only used for 2pc
     digest_to_seqnum_[request.timestamp()] = seqnum;
 
-    std::cout << "Node " << node_id_ << " broadcasting Accept for seqnum "
+    LOG << "Node " << node_id_ << " broadcasting Accept for seqnum "
               << seqnum << " with ballot " << current_ballot_.ToString() << std::endl;
 
     for (auto& [peer_id, stub] : peer_stubs_) {
@@ -482,7 +481,7 @@ void PaxosNode::HandlePrepare(const paxos::PrepareRequest& request, PrepareCallD
     {
         std::lock_guard<std::mutex> lock(election_mutex_);
 
-        std::cout << "Node " << node_id_ << " received Prepare from Node " 
+        LOG << "Node " << node_id_ << " received Prepare from Node " 
                   << incoming.node_id << " with ballot (" << incoming.counter 
                   << "," << incoming.node_id << ")" << std::endl;
 
@@ -497,7 +496,7 @@ void PaxosNode::HandlePrepare(const paxos::PrepareRequest& request, PrepareCallD
             in_election_ = true; 
 
             if (role_ == Role::LEADER) {
-                std::cout << "Node " << node_id_ << " stepping down from LEADER to BACKUP due to Prepare from Node " 
+                LOG << "Node " << node_id_ << " stepping down from LEADER to BACKUP due to Prepare from Node " 
                         << incoming.node_id << " with higher ballot " << incoming.ToString() << std::endl;
                 should_demote = true;
                 DemoteToBackup();
@@ -507,13 +506,13 @@ void PaxosNode::HandlePrepare(const paxos::PrepareRequest& request, PrepareCallD
             pending_promise_call_ = call_data; // save call pointer with highest ballot
             if (timer_expired) {
 
-                std::cout << "Node " << node_id_ << " will promise to Node " 
+                LOG << "Node " << node_id_ << " will promise to Node " 
                         << incoming.node_id << " with ballot " << incoming.ToString()
                         << " (timer expired)" << std::endl;
                 SendPromise();
             }
             else{
-                std::cout << "Node " << node_id_ << " has to wait to promise to Node " 
+                LOG << "Node " << node_id_ << " has to wait to promise to Node " 
                         << incoming.node_id << " with ballot " << incoming.ToString()
                         << " (timer has not expired)" << std::endl;
                 
@@ -531,7 +530,7 @@ void PaxosNode::HandlePrepare(const paxos::PrepareRequest& request, PrepareCallD
             call_data->Respond(reply); // immediate rejection
             pending_promise_call_ = nullptr; // clear any pending promise to avoid danglin p
             
-            std::cout << "Node " << node_id_ << " rejecting Prepare from Node " 
+            LOG << "Node " << node_id_ << " rejecting Prepare from Node " 
                     << incoming.node_id << " with ballot " << incoming.ToString()
                     << " (current ballot is " << current_ballot_.ToString() << ")" << std::endl;
 
@@ -566,7 +565,7 @@ void PaxosNode::SendPromise() {
     pending_promise_call_->Respond(promise_reply); //calls finish sequence in call_data
     pending_promise_call_ = nullptr; // clear after sending
 
-    std::cout << "Node " << node_id_ << " promising ballot " 
+    LOG << "Node " << node_id_ << " promising ballot " 
             << highest_promised_ballot_.ToString() << std::endl;
 }
 
@@ -579,11 +578,11 @@ void PaxosNode::HandlePromise(const paxos::PromiseResponse& reply) {
     }
 
     if (!reply.promised()) {
-        std::cout << "Node " << node_id_ << " received rejected Promise from Node " << reply.node_id()
+        LOG << "Node " << node_id_ << " received rejected Promise from Node " << reply.node_id()
                   << " with ballot (" << reply.ballot().counter() << "," << reply.ballot().node_id() << ")" << std::endl;
         return; // ignore rejections
     }
-    std::cout << "Node " << node_id_ << " received Promise from Node " << reply.node_id()
+    LOG << "Node " << node_id_ << " received Promise from Node " << reply.node_id()
               << " with ballot (" << reply.ballot().counter() << "," << reply.ballot().node_id() << ")" << std::endl;
 
     bool quorum_reached = false;
@@ -593,7 +592,7 @@ void PaxosNode::HandlePromise(const paxos::PromiseResponse& reply) {
 
         // Ignore replies if not in election
         if (role_ == Role::LEADER || !waiting_for_promises_) {
-            std::cout << "Node " << node_id_ << " ignoring Promise (not in election or is leader)." << std::endl;
+            LOG << "Node " << node_id_ << " ignoring Promise (not in election or is leader)." << std::endl;
             return;
         }
 
@@ -612,7 +611,7 @@ void PaxosNode::HandlePromise(const paxos::PromiseResponse& reply) {
         if (promises_received_.size() >= quorum_size) {
             quorum_reached = true;
             quorum_ballot = current_ballot_; // ballot used for this PREPARE
-            std::cout << "Node " << node_id_ 
+            LOG << "Node " << node_id_ 
                     << " received quorum of promises, becoming leader with ballot "
                     << quorum_ballot.ToString() << std::endl;
 
@@ -620,7 +619,7 @@ void PaxosNode::HandlePromise(const paxos::PromiseResponse& reply) {
         }
     }
     if (quorum_reached) {
-        std::cout << "node " << node_id_ << " Starts sequence of fillmissingnoop -> become_leader -> sendNV" << std::endl;
+        LOG << "node " << node_id_ << " Starts sequence of fillmissingnoop -> become_leader -> sendNV" << std::endl;
         MergeAcceptLogsFromPromises(); 
         FillMissingNoOps();  
         BecomeLeader(quorum_ballot);  
@@ -629,13 +628,13 @@ void PaxosNode::HandlePromise(const paxos::PromiseResponse& reply) {
         OnElectionComplete(); // process queued client requests
        
     }
-    std::cout << "Node " << node_id_ << " finished no-op processing, becomeing leader and sending new view" << std::endl;
+    LOG << "Node " << node_id_ << " finished no-op processing, becomeing leader and sending new view" << std::endl;
 }
 
 void PaxosNode::MergeAcceptLogsFromPromises() {
     std::lock_guard<std::mutex> lock(election_mutex_);
 
-    std::cout << "Node " << node_id_ << " merging accept logs from promises..." << std::endl;
+    LOG << "Node " << node_id_ << " merging accept logs from promises..." << std::endl;
 
     int max_seqnum = accept_log_.empty() ? 0 : accept_log_.rbegin()->first;
 
@@ -662,7 +661,7 @@ void PaxosNode::MergeAcceptLogsFromPromises() {
     // update last_seqnum_ so the new leader knows next seqnum to use
     last_seqnum_ = max_seqnum;
     received_promise_logs_.clear();
-    std::cout << "Node " << node_id_ << " updated last_seqnum_ to " << last_seqnum_ << std::endl;
+    LOG << "Node " << node_id_ << " updated last_seqnum_ to " << last_seqnum_ << std::endl;
 
 }
 
@@ -686,10 +685,10 @@ void PaxosNode::FillMissingNoOps() {
             noop_entry.set_node_id(node_id_);
 
             accept_log_[seq] = noop_entry;
-            std::cout << "Node " << node_id_ << " filled missing seqnum " << seq << " with No-Op entry." << std::endl;
+            LOG << "Node " << node_id_ << " filled missing seqnum " << seq << " with No-Op entry." << std::endl;
         }
     }
-    std::cout << "Node " << node_id_ << " filled missing sequence numbers up to " << max_seq << " with No-Op entries if needed" << std::endl;
+    LOG << "Node " << node_id_ << " filled missing sequence numbers up to " << max_seq << " with No-Op entries if needed" << std::endl;
 }
 
 void PaxosNode::InformClustersOfElection() {
@@ -712,7 +711,7 @@ void PaxosNode::HandlePropose(const paxos::AcceptedEntry& request, paxos::Ack* r
     if (request.new_leader() != 0) {
         int leader_cluster_id = (request.new_leader()-1) / divisor_ + 1;
         cluster_leaders_[leader_cluster_id] = request.new_leader();
-        std::cout << "Node " << node_id_ << " updated cluster " << leader_cluster_id << " leader to Node " << request.new_leader() << std::endl;
+        LOG << "Node " << node_id_ << " updated cluster " << leader_cluster_id << " leader to Node " << request.new_leader() << std::endl;
         return;
     }
 
@@ -731,7 +730,7 @@ void PaxosNode::HandlePropose(const paxos::AcceptedEntry& request, paxos::Ack* r
         if (request.ballot().counter() > current_ballot_.counter ||
             (request.ballot().counter() == current_ballot_.counter &&
              request.ballot().node_id() > current_ballot_.node_id)) {
-            std::cout << "[Leader] Node " << node_id_ << " stepping down from LEADER to BACKUP due to Accept from Node " 
+            LOG << "[Leader] Node " << node_id_ << " stepping down from LEADER to BACKUP due to Accept from Node " 
                       << request.node_id() << " with higher ballot (" 
                       << request.ballot().counter() << "," << request.ballot().node_id() << ")" << std::endl;
             
@@ -745,7 +744,7 @@ void PaxosNode::HandlePropose(const paxos::AcceptedEntry& request, paxos::Ack* r
         }
     }
 
-    std::cout << "[Backup] Node " << node_id_ 
+    LOG << "[Backup] Node " << node_id_ 
               << " received Accept for seqnum " << request.seqnum()
               << " with ballot (" << request.ballot().counter()
               << "," << request.ballot().node_id() << ")" << std::endl;
@@ -758,7 +757,7 @@ void PaxosNode::HandlePropose(const paxos::AcceptedEntry& request, paxos::Ack* r
         if (request.ballot().counter() < highest_promised_ballot_.counter ||
             (request.ballot().counter() == highest_promised_ballot_.counter &&
              request.ballot().node_id() < highest_promised_ballot_.node_id)) {
-            std::cout << "[Backup] Node " << node_id_
+            LOG << "[Backup] Node " << node_id_
                       << " rejecting Accept for seqnum " << request.seqnum()
                       << " due to lower ballot than highest promised ("
                       << highest_promised_ballot_.counter << ", "
@@ -819,7 +818,7 @@ void PaxosNode::SendAcceptAckToLeader(const paxos::AcceptedEntry& entry) {
 
     auto call = new AsyncAcceptAckCall(peer_stubs_[entry.node_id()], ack, client_cq_.get());
 
-    std::cout << "[backup Node " << node_id_ << " sent Accept Ack for seqnum "
+    LOG << "[backup Node " << node_id_ << " sent Accept Ack for seqnum "
               << entry.seqnum() << " to leader " << leader_id_ << std::endl;
 }
 
@@ -836,7 +835,7 @@ void PaxosNode::CommitEntry(const paxos::Ack ack) {
         // Check if entry exists in pending_entries_
         auto it = pending_entries_.find(seqnum);
         if (it == pending_entries_.end()) {
-            std::cout << "[Leader] Node " << node_id_ << " commiting off of new-view accepts or just repeated commit for seqnum (like for 2pc commit) " << seqnum << std::endl;
+            LOG << "[Leader] Node " << node_id_ << " commiting off of new-view accepts or just repeated commit for seqnum (like for 2pc commit) " << seqnum << std::endl;
             
             paxos::AcceptedEntry entry_to_copy_from;
             entry_to_copy_from = accept_log_[seqnum]; // should be present in accept log
@@ -859,7 +858,7 @@ void PaxosNode::CommitEntry(const paxos::Ack ack) {
             entry.mutable_request()->CopyFrom(it->second.request());
 
             entry.set_two_pc_status(ack.status());
-            std::cout << "entry two pc status is " << entry.two_pc_status() << "for seqnum " << entry.seqnum() << std::endl;
+            LOG << "entry two pc status is " << entry.two_pc_status() << "for seqnum " << entry.seqnum() << std::endl;
         }
 
 
@@ -867,17 +866,17 @@ void PaxosNode::CommitEntry(const paxos::Ack ack) {
         // Insert if not already committed
         if (entries_to_commit_.count(seqnum) == 0) {
             entries_to_commit_[seqnum] = entry;
-            std::cout << "[Leader] Node " << node_id_ 
+            LOG << "[Leader] Node " << node_id_ 
                       << " committed entry for seqnum " << seqnum << std::endl;
         }
     }
 
-    std::cout << "[Leader] Node " << node_id_ 
+    LOG << "[Leader] Node " << node_id_ 
               << " entering into broadcasting Commits for seqnum " << seqnum << std::endl;
     BroadcastCommit(entry);
 
     if (last_executed_seq_ + 1 == seqnum) {
-        std::cout << "[Leader] Node " << node_id_ 
+        LOG << "[Leader] Node " << node_id_ 
                   << " entering sequentially ... for seqnum " << seqnum << std::endl;
         SequentiallyExecuteCommittedEntries();
     }
@@ -885,7 +884,7 @@ void PaxosNode::CommitEntry(const paxos::Ack ack) {
         ExecuteRepeatedTwoPCEntry(entry);
     }
     else {
-        std::cout << "[Leader] Node " << node_id_ 
+        LOG << "[Leader] Node " << node_id_ 
                   << " not executing committed entry for seqnum " << seqnum 
                   << " yet (last executed is " << last_executed_seq_ << ")" << std::endl;
     }
@@ -898,13 +897,13 @@ void PaxosNode::SequentiallyExecuteCommittedEntries() {
         paxos::CommitEntry entry;
         std::string two_pc_Status;
         {
-            std::cout << "Node " << node_id_ 
+            LOG << "Node " << node_id_ 
                       << " top of while" << std::endl;
             std::lock_guard<std::mutex> lock(pending_mutex_);
             int next_seq = last_executed_seq_ + 1;
             auto it = entries_to_commit_.find(next_seq);
             if (it == entries_to_commit_.end()) {
-                std::cout << "Node " << node_id_ 
+                LOG << "Node " << node_id_ 
                           << " broke. Next seq to be executed would be seq.  " << next_seq << std::endl;
 
                 break;
@@ -916,7 +915,7 @@ void PaxosNode::SequentiallyExecuteCommittedEntries() {
             entry.mutable_request()->CopyFrom(it->second.request());
             two_pc_Status = it->second.two_pc_status();
             last_executed_seq_ = next_seq;
-            std::cout << "Node " << node_id_ 
+            LOG << "Node " << node_id_ 
                       << " updated last_executed_seq_ to " << last_executed_seq_ << std::endl;
         }
 
@@ -943,7 +942,7 @@ void PaxosNode::SequentiallyExecuteCommittedEntries() {
                 }
             }
             else {
-                std::cout << "[Leader] Node " << node_id_ << " not looking for call data for seqnum " << entry.seqnum() << " as it is from new-view accept log" << std::endl;
+                LOG << "[Leader] Node " << node_id_ << " not looking for call data for seqnum " << entry.seqnum() << " as it is from new-view accept log" << std::endl;
             
             }
 
@@ -951,13 +950,13 @@ void PaxosNode::SequentiallyExecuteCommittedEntries() {
                 SendClientReply(call_data, entry.seqnum(), success);
             } 
             else if (two_pc_Status == "A" || two_pc_Status == "P") {
-                std::cout << "[Leader] Node " << node_id_ << " sending reply for seqnum " 
+                LOG << "[Leader] Node " << node_id_ << " sending reply for seqnum " 
                         << entry.seqnum() << " due to 2PC status " << two_pc_Status << std::endl;
 
                 SendReplyToCoordLeader(call_data, entry.seqnum(), two_pc_Status);
             }
             else if (two_pc_Status == "COORD") {
-                std::cout << "[Leader] Node " << node_id_ << " executed " 
+                LOG << "[Leader] Node " << node_id_ << " executed " 
                         << entry.seqnum() << " as coordinator of 2PC" << std::endl;
 
                 paxos::TwoPCMsg cached_msg;       // local copy (outside lock)
@@ -974,7 +973,7 @@ void PaxosNode::SequentiallyExecuteCommittedEntries() {
 
                     auto it = prepare_and_aborted_queue_.find(entry.request().timestamp());
                     if (it != prepare_and_aborted_queue_.end()) {
-                        std::cout << "Node " << node_id_ 
+                        LOG << "Node " << node_id_ 
                                 << ": found queued PrepareAndAbort req, ts=" 
                                 << entry.request().timestamp() << std::endl;
 
@@ -987,7 +986,7 @@ void PaxosNode::SequentiallyExecuteCommittedEntries() {
 
                 // Call heavy logic OUTSIDE the lock
                 if (has_msg) {
-                    std::cout << "Node " << node_id_ 
+                    LOG << "Node " << node_id_ 
                             << ": calling StartSecondPhase for queued ts="
                             << entry.request().timestamp() << std::endl;
 
@@ -1002,20 +1001,20 @@ void PaxosNode::SequentiallyExecuteCommittedEntries() {
                         << entry.request().client_id() << std::endl;
             }
             else if (call_data != nullptr) {
-                std::cout << "intra-shard normal sendreply" << std::endl;
+                LOG << "intra-shard normal sendreply" << std::endl;
                 SendClientReply(call_data, entry.seqnum(), success);
             }
         }
         else { // backup
 
             if (in_new_view_ && max_seqnum_in_new_view_ == entry.seqnum() && newview_call_data_!= nullptr) {
-                std::cout << "[Backup] Node " << node_id_ << " about to kill new-view cd. just executed seq: " << entry.seqnum() << std::endl;
+                LOG << "[Backup] Node " << node_id_ << " about to kill new-view cd. just executed seq: " << entry.seqnum() << std::endl;
                 paxos::Ack ack;
                 //newview_call_data_->Respond(ack); // set to null ptr in calld data
                 //in_new_view_ = false; // done processing new-view entries
-                std::cout << "[Backup] Node " << node_id_ << " completed executing all new-view committed entries." << std::endl;
+                LOG << "[Backup] Node " << node_id_ << " completed executing all new-view committed entries." << std::endl;
             } else{
-                std::cout << "[Backup] Node " << node_id_ << " is newview_call_data_ nullptr for seq: " << entry.seqnum()<< " =" << (newview_call_data_==nullptr) << std::endl;
+                LOG << "[Backup] Node " << node_id_ << " is newview_call_data_ nullptr for seq: " << entry.seqnum()<< " =" << (newview_call_data_==nullptr) << std::endl;
             }
             {
                 // clear pending 
@@ -1048,7 +1047,7 @@ bool PaxosNode::ExecuteTransaction(const paxos::ClientRequest& request, int seqn
 
     // Check sufficient balance
     if (accounts_[from] < amt) {
-        std::cout << "Node " << node_id_ << ": insufficient balance for " 
+        LOG << "Node " << node_id_ << ": insufficient balance for " 
                   << from << " -> " << to << " amount " << amt << ", client" << from
                   << " only has " << accounts_[from] << std::endl;
 
@@ -1062,7 +1061,7 @@ bool PaxosNode::ExecuteTransaction(const paxos::ClientRequest& request, int seqn
     }
 
     if (two_pc_status == "A") {
-        std::cout << "Node " << node_id_ << ": executing aborted due to 2PC abort for seqnum " << seqnum << std::endl;
+        LOG << "Node " << node_id_ << ": executing aborted due to 2PC abort for seqnum " << seqnum << std::endl;
         //wal_[seqnum] = {accounts_[to], accounts_[to]}; // no change
         std::lock_guard<std::mutex> lock(executed_entries_mutex_);
         executed_entries_.insert(seqnum); // still executed even though aborted
@@ -1099,12 +1098,12 @@ bool PaxosNode::ExecuteTransaction(const paxos::ClientRequest& request, int seqn
         accounts_[from] -= amt;
         //UpdateBalance(from, amt, true);
         modified_accounts_.insert(from);
-        std::cout << "Node " << node_id_ << ": executed 2PC COORD transaction, seqnum:" << seqnum
+        LOG << "Node " << node_id_ << ": executed 2PC COORD transaction, seqnum:" << seqnum
                   << " " << from << " -> " << to << " amount " << amt 
                   << " original balance was " << og << ", new balance is " << accounts_[from] << std::endl;
     }
     else {
-        std::cout << "two_pc_status: " << two_pc_status << std::endl;
+        LOG << "two_pc_status: " << two_pc_status << std::endl;
     }
 
     {
@@ -1113,7 +1112,7 @@ bool PaxosNode::ExecuteTransaction(const paxos::ClientRequest& request, int seqn
     }
 
 
-    std::cout << "Node " << node_id_ << ": executed transaction, seqnum:" << seqnum
+    LOG << "Node " << node_id_ << ": executed transaction, seqnum:" << seqnum
               << " " << from << " -> " << to << " amount " << amt << std::endl;
 
     return true;
@@ -1126,12 +1125,12 @@ void PaxosNode::BroadcastCommit(const paxos::CommitEntry& entry) {
         if (peer_id < intra_c_nid_range_.first || peer_id > intra_c_nid_range_.second) {
             continue; // skip nodes outside cluster
         }
-        std::cout << "[Leader] Node " << node_id_ << " broadcasting Commit for seqnum "
+        LOG << "[Leader] Node " << node_id_ << " broadcasting Commit for seqnum "
                   << entry.seqnum() << " to Node " << peer_id << std::endl;
         CommitClientCallData* call = new CommitClientCallData(stub, client_cq_.get(), this, entry);
     }
 
-    std::cout << "Node " << node_id_ << ": broadcasted commit for seqnum " 
+    LOG << "Node " << node_id_ << ": broadcasted commit for seqnum " 
               << entry.seqnum() << std::endl;
 }
 
@@ -1151,7 +1150,7 @@ void PaxosNode::SendClientReply(SendClientRequestCallData* call_data, int seq_nu
     reply.set_timestamp(request.timestamp());
     reply.set_success(success);
     reply.set_from_this_term(seq_num > max_seqnum_in_new_view_);
-    std::cout << "set from this term to " << (seq_num > max_seqnum_in_new_view_) << std::endl;
+    LOG << "set from this term to " << (seq_num > max_seqnum_in_new_view_) << std::endl;
 
 
     // Cache reply for exactly-once semantics
@@ -1161,7 +1160,7 @@ void PaxosNode::SendClientReply(SendClientRequestCallData* call_data, int seq_nu
     }
 
 
-    std::cout << "[Leader] Node " << node_id_ 
+    LOG << "[Leader] Node " << node_id_ 
               << ": sending reply to client " << request.from_account()
               << " for seqnum=" << seq_num
               << " success=" << success << std::endl;
@@ -1173,9 +1172,9 @@ void PaxosNode::SendClientReply(SendClientRequestCallData* call_data, int seq_nu
     if (seq_num > max_seqnum_in_new_view_ && call_data != nullptr) {
         paxos::TransactionAck ack;
         call_data->Respond(ack); // clean up the call data
-        std::cout << "[Leader] Node " << node_id_ << ": cleaned up new-view call data " << std::endl;
+        LOG << "[Leader] Node " << node_id_ << ": cleaned up new-view call data " << std::endl;
     } else {
-        std::cout << "[Leader] Node " << node_id_ << ": not cleaning up call data for seqnum " << seq_num << " as it is from new-view accept log" << std::endl;
+        LOG << "[Leader] Node " << node_id_ << ": not cleaning up call data for seqnum " << seq_num << " as it is from new-view accept log" << std::endl;
     }
 }
 
@@ -1185,7 +1184,7 @@ void PaxosNode::SendClientReply(SendClientRequestCallData* call_data, int seq_nu
 void PaxosNode::HandleCommit(const paxos::CommitEntry& request, paxos::Ack* reply) {
     if (!alive_.load()) return;
 
-    std::cout << "[Backup] Node " << node_id_ 
+    LOG << "[Backup] Node " << node_id_ 
               << " received Commit for seqnum " << request.seqnum()
               << " with ballot (" << request.ballot().counter()
               << "," << request.ballot().node_id() << ")" << std::endl;
@@ -1212,23 +1211,37 @@ void PaxosNode::HandleCommit(const paxos::CommitEntry& request, paxos::Ack* repl
         ExecuteRepeatedTwoPCEntry(request);
     }
     else if (last_executed_seq_ + 1 == request.seqnum() && executed_entries_.count(request.seqnum()) == 0) {
-        std::cout << "[Backup] Node " << node_id_ 
+        LOG << "[Backup] Node " << node_id_ 
                   << " enterring sequentially ... for seqnum " << request.seqnum() << std::endl;
         SequentiallyExecuteCommittedEntries();
     } else {
-        std::cout << "[Backup] Node " << node_id_ 
+        LOG << "[Backup] Node " << node_id_ 
                   << " cannot execute Commit for seqnum " << request.seqnum()
                   << " yet (last executed seqnum is " << last_executed_seq_ << ")" << std::endl;
     }
 }
 
 void PaxosNode::OnNewViewCallFinished(NewViewCallData* call_data) {
-    
+    std::lock_guard<std::mutex> lock(newview_cd_mutex_);
     if (newview_call_data_ == call_data) {
         newview_call_data_ = nullptr;
-
     }
+}
 
+// Atomically claim newview_call_data_ and Respond once. Multiple threads
+// (election-timer thread, HandleSetAlive/kill, the CQ FINISH handler) can race;
+// guarantees only one caller ever gets the live pointer, so Finish()/delete happens exactly once. 
+// Respond() is done outside the lock so the CQ thread that deletes the object never contends on it.
+void PaxosNode::RespondAndClearNewViewCallData() {
+    NewViewCallData* cd = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(newview_cd_mutex_);
+        cd = newview_call_data_;
+        newview_call_data_ = nullptr;
+    }
+    if (cd != nullptr) {
+        cd->Respond(paxos::Ack());
+    }
 }
 
 
@@ -1254,13 +1267,13 @@ void PaxosNode::HandleNewView(const paxos::NewViewRequest& request, NewViewCallD
         std::lock_guard<std::mutex> lock(election_mutex_);
         // Sanity check: only backups should process NEW-VIEW
         if (role_ == Role::LEADER) {
-            std::cout << "[Check] Node " << node_id_ << " is LEADER but received a NEW-VIEW with ballot number " << leader_ballot.counter << " from node " << leader_ballot.node_id << std::endl;
+            LOG << "[Check] Node " << node_id_ << " is LEADER but received a NEW-VIEW with ballot number " << leader_ballot.counter << " from node " << leader_ballot.node_id << std::endl;
 
             // If the incoming ballot is higher, step down to BACKUP
             // there is a possibility that 2 leaders can be elected (however unlikely), and this should resolve it
             if (leader_ballot > current_ballot_) { 
 
-                std::cout << "Node " << node_id_ << " stepping down from LEADER to BACKUP due to higher ballot in NEW-VIEW: " << leader_ballot.ToString() << " > " << current_ballot_.ToString() << std::endl;
+                LOG << "Node " << node_id_ << " stepping down from LEADER to BACKUP due to higher ballot in NEW-VIEW: " << leader_ballot.ToString() << " > " << current_ballot_.ToString() << std::endl;
                 demote = true;
 
                 // it is okay to call this while holding the election_mutex_ lock
@@ -1268,7 +1281,7 @@ void PaxosNode::HandleNewView(const paxos::NewViewRequest& request, NewViewCallD
                 SetNewLeader(request.ballot().node_id(), request.ballot().counter());
             }
             else{
-                std::cout << "Node " << node_id_ << " ignoring NEW-VIEW with lower ballot." << std::endl;
+                LOG << "Node " << node_id_ << " ignoring NEW-VIEW with lower ballot." << std::endl;
                 
                 
                 call_data->Respond(paxos::Ack()); 
@@ -1279,7 +1292,7 @@ void PaxosNode::HandleNewView(const paxos::NewViewRequest& request, NewViewCallD
     // restart electiontimer if demoted
     if (demote) {StartElectionTimer();}
     
-    std::cout << "Hit HandleNewView on Node " << node_id_ << " with NEW-VIEW from Node " << request.ballot().node_id() << " with ballot " << leader_ballot.ToString() << std::endl;
+    LOG << "Hit HandleNewView on Node " << node_id_ << " with NEW-VIEW from Node " << request.ballot().node_id() << " with ballot " << leader_ballot.ToString() << std::endl;
     // Adopt the leader's ballot for this backup
     if (role_ == Role::BACKUP) {
         // track leader -> NEeds to be fixed
@@ -1288,7 +1301,7 @@ void PaxosNode::HandleNewView(const paxos::NewViewRequest& request, NewViewCallD
 
             SetNewLeader(request.ballot().node_id(), request.ballot().counter());
             if (leader_ballot < current_ballot_){
-                std::cout << "Warning: Node " << node_id_ << " received NEW-VIEW with lower ballot than its current ballot. This should not happen!" << std::endl;
+                LOG << "Warning: Node " << node_id_ << " received NEW-VIEW with lower ballot than its current ballot. This should not happen!" << std::endl;
             }
 
             waiting_for_promises_ = false; // no longer in election - TODO look for better palcement maybe in helper
@@ -1297,7 +1310,7 @@ void PaxosNode::HandleNewView(const paxos::NewViewRequest& request, NewViewCallD
 
         OnElectionComplete();
 
-        std::cout << "Node " << node_id_ 
+        LOG << "Node " << node_id_ 
                     << " updated current_ballot_ and highest_promised_ballot_ to leader's ballot: "
                     << current_ballot_.ToString() << std::endl;
     }
@@ -1313,7 +1326,7 @@ void PaxosNode::HandleNewView(const paxos::NewViewRequest& request, NewViewCallD
             int seq = entry.seqnum();
             auto it = accept_log_.find(seq);
             if (it == accept_log_.end() || entry.ballot().counter() > it->second.ballot().counter()) {
-                std::cout << "Node " << node_id_ << " updating accept_log_ for seq " << seq << " from NEW-VIEW" << std::endl;
+                LOG << "Node " << node_id_ << " updating accept_log_ for seq " << seq << " from NEW-VIEW" << std::endl;
                 accept_log_[seq] = entry;
             }
 
@@ -1323,13 +1336,16 @@ void PaxosNode::HandleNewView(const paxos::NewViewRequest& request, NewViewCallD
     }
 
     if (entries_to_send.empty()) {
-        std::cout << "Node " << node_id_ << " has no acc entries in new-view. Calling respond!" << std::endl;
+        LOG << "Node " << node_id_ << " has no acc entries in new-view. Calling respond!" << std::endl;
         call_data->Respond(paxos::Ack()); 
     } else {
-        newview_call_data_ = call_data; // save to respond after sending acks
+        {
+            std::lock_guard<std::mutex> lock(newview_cd_mutex_);
+            newview_call_data_ = call_data; // save to respond after sending acks
+        }
         in_new_view_ = true; // indicate we are in new-view processing
         max_seqnum_in_new_view_ = entries_to_send.back().seqnum();
-        std::cout << "Node " << node_id_ << " processing NEW-VIEW with " << entries_to_send.size() << " entries, max seqnum " << max_seqnum_in_new_view_ << std::endl;
+        LOG << "Node " << node_id_ << " processing NEW-VIEW with " << entries_to_send.size() << " entries, max seqnum " << max_seqnum_in_new_view_ << std::endl;
     }
 
     for (auto& entry : entries_to_send) {
@@ -1349,7 +1365,7 @@ void PaxosNode::HandleNewView(const paxos::NewViewRequest& request, NewViewCallD
             ack.set_status(status);
         }
 
-        std::cout << "in HandleNewView, Node " << node_id_ << " just about to send accept to leader " << leader_id_ << " for seq " << entry.seqnum() << std::endl;
+        LOG << "in HandleNewView, Node " << node_id_ << " just about to send accept to leader " << leader_id_ << " for seq " << entry.seqnum() << std::endl;
 
         new AsyncAcceptAckCall(peer_stubs_[leader_id_], ack, client_cq_.get()); 
     }
@@ -1363,7 +1379,7 @@ void PaxosNode::HandleAccept(const paxos::Ack& ack) { //, paxos::TransactionAck*
     if (!alive_.load()) return; 
 
     if (role_ != Role::LEADER) { // for accept acks send by demoted leader 
-        std::cout << "[IRGNORING] Node " << node_id_ << " not LEADER but received an Accept Ack from Node " << ack.node_id() << std::endl;
+        LOG << "[IRGNORING] Node " << node_id_ << " not LEADER but received an Accept Ack from Node " << ack.node_id() << std::endl;
         return; // only leader processes accept acks
     }
 
@@ -1378,7 +1394,7 @@ void PaxosNode::HandleAccept(const paxos::Ack& ack) { //, paxos::TransactionAck*
 
 
     bool should_commit = false;
-    std::cout << "[Leader] Node " << node_id_ 
+    LOG << "[Leader] Node " << node_id_ 
               << " received Accept from Node " << ack.node_id()
               << " for seqnum " << ack.seqnum()
               << " with ballot (" << ack.ballot().counter()
@@ -1397,11 +1413,11 @@ void PaxosNode::HandleAccept(const paxos::Ack& ack) { //, paxos::TransactionAck*
                 (ack.seqnum() <= max_seqnum_in_new_view_ && condition_q)) {
                 
                 should_commit = true;
-                std::cout << "[Leader] Node " << node_id_ << " has enough acks (2pc) (" << accepted_count_two_pc_commit_[ack.seqnum()][ack.ballot().counter()].size() << " > " << f_ << ") to commit seqnum " << ack.seqnum() << " Ack from " << ack.node_id() << std::endl;
+                LOG << "[Leader] Node " << node_id_ << " has enough acks (2pc) (" << accepted_count_two_pc_commit_[ack.seqnum()][ack.ballot().counter()].size() << " > " << f_ << ") to commit seqnum " << ack.seqnum() << " Ack from " << ack.node_id() << std::endl;
 
             }
             else {
-                std::cout << "[Leader] Node " << node_id_ << " does not have enough acks yet (2pc) to commit seqnum " << ack.seqnum() 
+                LOG << "[Leader] Node " << node_id_ << " does not have enough acks yet (2pc) to commit seqnum " << ack.seqnum() 
                         << " (have " << accepted_count_two_pc_commit_[ack.seqnum()][ack.ballot().counter()].size() 
                         << ", need " << (f_ + 1) << ")" << ". Ack from " << ack.node_id() << std::endl;
             }
@@ -1415,11 +1431,11 @@ void PaxosNode::HandleAccept(const paxos::Ack& ack) { //, paxos::TransactionAck*
                 (ack.seqnum() <= max_seqnum_in_new_view_ && condition_q)) {
                 
                 should_commit = true;
-                std::cout << "[Leader] Node " << node_id_ << " has enough acks (" << accepted_count_[ack.seqnum()][ack.ballot().counter()].size() << " > " << f_ << ") to commit seqnum " << ack.seqnum() << std::endl;
+                LOG << "[Leader] Node " << node_id_ << " has enough acks (" << accepted_count_[ack.seqnum()][ack.ballot().counter()].size() << " > " << f_ << ") to commit seqnum " << ack.seqnum() << std::endl;
 
             }
             else {
-                std::cout << "[Leader] Node " << node_id_ << " does not have enough acks yet to commit seqnum " << ack.seqnum() 
+                LOG << "[Leader] Node " << node_id_ << " does not have enough acks yet to commit seqnum " << ack.seqnum() 
                         << " (have " << accepted_count_[ack.seqnum()][ack.ballot().counter()].size() 
                         << ", need " << (f_ + 1) << ")" << std::endl;
             }
@@ -1429,7 +1445,7 @@ void PaxosNode::HandleAccept(const paxos::Ack& ack) { //, paxos::TransactionAck*
     }
 
     if (should_commit) {
-        std::cout << "[Leader] Node " << node_id_ << " calling commitentry w seqnum " << ack.seqnum() << " and 2pc status " << ack.status() << std::endl;
+        LOG << "[Leader] Node " << node_id_ << " calling commitentry w seqnum " << ack.seqnum() << " and 2pc status " << ack.status() << std::endl;
         CommitEntry(ack);
     }
 
@@ -1453,6 +1469,7 @@ void PaxosNode::SendNewView() {
         request.mutable_ballot()->set_counter(current_ballot_.counter);
         request.mutable_ballot()->set_node_id(current_ballot_.node_id);
 
+        std::vector<int> self_accept_seqs;
         {
             std::lock_guard<std::mutex> lock(log_mutex_);
             // Add all accept_log entries in sequence order
@@ -1460,8 +1477,17 @@ void PaxosNode::SendNewView() {
                 auto it = accept_log_.find(seq);
                 if (it != accept_log_.end()) {
                     *request.add_accept_log() = it->second;
-                    accepted_count_[seq][current_ballot_.counter].insert(node_id_); // self accepts
+                    self_accept_seqs.push_back(seq);
                 }
+            }
+        }
+        {
+            // accepted_count_ is guarded by quorum_mutex_ everywhere else (e.g. HandleAccept).
+            // Updating it under log_mutex_ here races HandleAccept's concurrent inserts during
+            // the view change -> concurrent std::map mutation -> heap corruption. Use the right lock.
+            std::lock_guard<std::mutex> lock(quorum_mutex_);
+            for (int seq : self_accept_seqs) {
+                accepted_count_[seq][current_ballot_.counter].insert(node_id_); // self accepts
             }
         }
 
@@ -1477,12 +1503,12 @@ void PaxosNode::SendNewView() {
             continue; // skip self
         }
 
-        std::cout<<"Sending to peer" << peer_id << " with stub " << stub << std::endl;
+        LOG<<"Sending to peer" << peer_id << " with stub " << stub << std::endl;
         max_seqnum_in_new_view_ = last_seqnum_.load();
         auto call = new NewViewClientCallData(stub, client_cq_.get(), this, request);
     }
 
-    std::cout << "Node " << node_id_ << " sent NEW-VIEW with ballot "
+    LOG << "Node " << node_id_ << " sent NEW-VIEW with ballot "
               << current_ballot_.ToString() << " to all peers." << std::endl;
 }
 
@@ -1495,7 +1521,7 @@ void PaxosNode::SendPrepare(Ballot new_ballot) {
         in_election_ = true;
     }
 
-    std::cout << "Node " << node_id_ << " sending PREPARE with ballot " << new_ballot.ToString() << std::endl;
+    LOG << "Node " << node_id_ << " sending PREPARE with ballot " << new_ballot.ToString() << std::endl;
 
     { // log your own prepare
         std::lock_guard<std::mutex> lock(printlog_mutex_);
@@ -1515,7 +1541,7 @@ void PaxosNode::SendPrepare(Ballot new_ballot) {
 
         
         auto call = new PrepareClientCallData(stub, client_cq_.get(), this, request); // deleted in OnComplete() in CallData
-        std::cout << "Node " << node_id_ << " sent PREPARE to Node " << peer_id << std::endl;
+        LOG << "Node " << node_id_ << " sent PREPARE to Node " << peer_id << std::endl;
     }
 }
 
@@ -1556,7 +1582,7 @@ void PaxosNode::StartElectionTimer() {
             }
             bool timed_out = false;
             bool woke_by_reset = false;
-            std::cout << "New timer loop for node " << node_id_ << " with timeout " << timeout.count() << " ms" << std::endl;
+            LOG << "New timer loop for node " << node_id_ << " with timeout " << timeout.count() << " ms" << std::endl;
             // Wait with a mutex just for the condition variable
             {
                 std::unique_lock<std::mutex> lock(election_mutex_);
@@ -1572,19 +1598,16 @@ void PaxosNode::StartElectionTimer() {
             }
 
             if (woke_by_reset) {
-                std::cout << "Node " << node_id_ << " woke up due to RESET" << std::endl;
+                LOG << "Node " << node_id_ << " woke up due to RESET" << std::endl;
             } else if (timed_out) {
-                std::cout << "Node " << node_id_ << " woke up due to TIMEOUT" << std::endl;
+                LOG << "Node " << node_id_ << " woke up due to TIMEOUT" << std::endl;
             }
 
             // Call timeout handler outside of the lock
             if (timed_out && alive_.load()) {
-                std::cout << " Calling OnElectionTimeout for node " << node_id_ << std::endl;
-                
-                if (newview_call_data_ != nullptr) {
-                    std::cout << "Node " << node_id_ << " is in new-view processing, skipping election timeout." << std::endl;
-                    newview_call_data_->Respond(paxos::Ack()); // clean up the call data
-                }
+                LOG << " Calling OnElectionTimeout for node " << node_id_ << std::endl;
+
+                RespondAndClearNewViewCallData(); // safe: nulls member before Respond, so no double-Finish
                 OnElectionTimeout();
             }
         }
@@ -1608,7 +1631,7 @@ void PaxosNode::OnElectionTimeout() {
         auto since_last_leader_msg = now - last_leader_msg_received_;
         auto since_last_prepare = now - last_prepare_received_;
 
-        std::cout << "Time since last prepare for node " << node_id_
+        LOG << "Time since last prepare for node " << node_id_
                   << ": " << std::chrono::duration_cast<std::chrono::milliseconds>(since_last_prepare).count()
                   << " ms" << std::endl;
 
@@ -1616,7 +1639,7 @@ void PaxosNode::OnElectionTimeout() {
         if (since_last_prepare >= prepare_cooldown_) {
             new_ballot = Ballot(current_ballot_.counter + 1, node_id_);
 
-            std::cout << "Node " << node_id_
+            LOG << "Node " << node_id_
                       << " election timeout, starting new election with ballot "
                       << new_ballot.ToString() << std::endl;
 
@@ -1628,7 +1651,7 @@ void PaxosNode::OnElectionTimeout() {
             should_send_prepare = true;
         } else {
             // Skip this round, wait for next timer tick
-            std::cout << "Node " << node_id_
+            LOG << "Node " << node_id_
                       << " election timeout, but recently saw prepare. Skipping." << std::endl;
         }
         if (pending_promise_call_!= nullptr) {SendPromise();} // if there is a pending promise to send, send it now that weve timed out
@@ -1649,18 +1672,21 @@ void PaxosNode::OnElectionComplete() {
 
     }
 
-    if (leader_id_ != 1)  { // otherwise forwarding blindly
-    // Swap out queued requests to process outside lock
-        queued.swap(queued_client_requests_);
-    
-        std::cout << "Node " << node_id_ << " election complete, processing " 
+    if (leader_id_ != -1)  { // otherwise forwarding blindly - TODO: maybe add condition to prevent 1 broadcast by client before handling
+
+        {
+            std::lock_guard<std::mutex> lock(queued_mutex_);
+            queued.swap(queued_client_requests_);
+        }
+
+        LOG << "Node " << node_id_ << " election complete, processing "
                 << queued.size() << " queued client requests." << std::endl;
         for (auto& req : queued) {
             ProcessClientRequest(req.request, req.call_data);
         }
     }
     else {
-        std::cout << "Node " << node_id_ << " election complete, but leader is Node 1, not processing queued requests since it does know who leader is" << std::endl;
+        LOG << "Node " << node_id_ << " election complete, but leader is Node 1, not processing queued requests since it does know who leader is" << std::endl;
     }
     {
         std::lock_guard<std::mutex> lock(wal_mutex_);
@@ -1676,7 +1702,7 @@ void PaxosNode::OnElectionComplete() {
                 // Revert deduction
                 accounts_[from_account] = wal_entry.before_value;
                 balance_locks_[from_account].unlock();
-                std::cout << "Reverted account " << from_account
+                LOG << "Reverted account " << from_account
                         << " to " << wal_entry.before_value
                         << " as part of demotion." << std::endl;
             } else {
@@ -1699,18 +1725,18 @@ void PaxosNode::StopElectionTimer() {
         //if (!timer_running_) return; // already stopped
         
         if (timer_running_ == false) {
-            std::cout << "Node " << node_id_ << " election timer already stopped." << std::endl;
+            LOG << "Node " << node_id_ << " election timer already stopped." << std::endl;
             return;
         }
         timer_running_ = false;      // signal the thread to stop
         election_reset_ = true;         // wake up the thread if it's waiting
     }
-    std::cout << "In Stop Election Timer, about to notify one" << std::endl;
+    LOG << "In Stop Election Timer, about to notify one" << std::endl;
     election_cv_.notify_one();          // notify the waiting thread and there is only 1 election timer thread per node
     if (election_thread_.joinable()) {
         election_thread_.join();        // wait for thread to exit
     }
-    std::cout << "Node " << node_id_ << " election timer stopped." << std::endl;
+    LOG << "Node " << node_id_ << " election timer stopped." << std::endl;
 
 }
 
@@ -1728,9 +1754,9 @@ void PaxosNode::ResetElectionTimer() {
     }
     else {
         election_cv_.notify_one();            // wake up the waiting thread
-        std::cout << "Node " << node_id_ << " election timer reset." << std::endl;
-        std::cout << "Election running for node " << node_id_ << ": " << timer_running_ << std::endl;
-        std::cout << "Election Reset for node " << node_id_ << ": " << election_reset_ << std::endl;
+        LOG << "Node " << node_id_ << " election timer reset." << std::endl;
+        LOG << "Election running for node " << node_id_ << ": " << timer_running_ << std::endl;
+        LOG << "Election Reset for node " << node_id_ << ": " << election_reset_ << std::endl;
     }
 
 }
@@ -1746,7 +1772,7 @@ void PaxosNode::BecomeLeader(Ballot ballot) {
         current_ballot_ = ballot;
     }
 
-    std::cout << "Node " << node_id_ << " officially becomes leader with ballot " << ballot.ToString() << std::endl;
+    LOG << "Node " << node_id_ << " officially becomes leader with ballot " << ballot.ToString() << std::endl;
 
 }
 
@@ -1754,7 +1780,7 @@ void PaxosNode::BecomeLeader(Ballot ballot) {
 void PaxosNode::DemoteToBackup() {
     {
         role_ = Role::BACKUP;
-        std::cout << "Node " << node_id_ 
+        LOG << "Node " << node_id_ 
                   << " demoted to backup. Current ballot: " 
                   << current_ballot_.ToString() << std::endl;
 
@@ -1806,7 +1832,7 @@ void PaxosNode::DemoteToBackup() {
                     // Revert deduction
                     accounts_[from_account] = wal_entry.before_value;
                     balance_locks_[from_account].unlock();
-                    std::cout << "Reverted account " << from_account
+                    LOG << "Reverted account " << from_account
                             << " to " << wal_entry.before_value
                             << " as part of demotion." << std::endl;
                 } else {
@@ -1832,7 +1858,7 @@ void PaxosNode::SetNewLeader(int new_leader_id, int new_leader_counter) {
     current_ballot_.node_id = new_leader_id;
     highest_promised_ballot_ = current_ballot_; 
 
-    std::cout << "Node " << node_id_ << " recognizes Node " << leader_id_ << " as new leader with ballot counter" << new_leader_counter << std::endl;
+    LOG << "Node " << node_id_ << " recognizes Node " << leader_id_ << " as new leader with ballot counter" << new_leader_counter << std::endl;
 }
 
 
@@ -1846,13 +1872,13 @@ void PaxosNode::kill() {
         DemoteToBackup();
     }
     
-    std::cout << "Node " << node_id_ << " has been killed." << std::endl;
+    LOG << "Node " << node_id_ << " has been killed." << std::endl;
 }
 
 void PaxosNode::revive() {
     if (!alive_.exchange(true)) { // only act if previously dead
         alive_.store(true);
-        std::cout << "Node " << node_id_ << " revived." << std::endl;
+        LOG << "Node " << node_id_ << " revived." << std::endl;
         //if (role_ == Role::BACKUP) {
         //    StartElectionTimer(); 
         //}
@@ -1874,30 +1900,32 @@ void PaxosNode::HandleSetAlive(const paxos::AliveUpdateRequest& request, paxos::
         return;
     }
 
-    std::cout << "[Node " << node_id_ << "] Hit HandleSetAlive with is_alive=" 
+    LOG << "[Node " << node_id_ << "] Hit HandleSetAlive with is_alive=" 
               << request.is_alive() << " kill_leader=" << request.kill_leader() << std::endl;
 
     if (request.reset_state()) {
-        std::cout<<"[Node " << node_id_ << "] Resetting state as per request." << std::endl;
+        LOG<<"[Node " << node_id_ << "] Resetting state as per request." << std::endl;
         ResetNode();
     }
 
     if (request.kill_leader()) {
-
+        bool was_leader = (role_ == Role::LEADER);
         kill();
-        leader_id_ = -1; // ?
-        alive_before_prompt_ = false; // new 
-        std::cout << "[Node " << node_id_ << "] Killed as per kill request." << std::endl;
+        if (was_leader) {
+            leader_id_ = -1;
+        }
+        alive_before_prompt_ = false;
+        LOG << "[Node " << node_id_ << "] Killed as per kill request." << std::endl;
         return;
     }
     else if (request.recover()) {
-        std::cout << "[Node " << node_id_ << "] revived as per revive request." << std::endl;
+        LOG << "[Node " << node_id_ << "] revived as per revive request." << std::endl;
         revive();
         return;
     }
 
     if (!request.prompt_pause() && request.is_alive() && !alive_before_prompt_) { // actual alive message 
-        std::cout << "[Node " << node_id_ << "] revive + demotion" << std::endl;
+        LOG << "[Node " << node_id_ << "] revive + demotion" << std::endl;
         DemoteToBackup(); 
         leader_id_ = -1; // ?
         revive();
@@ -1906,14 +1934,11 @@ void PaxosNode::HandleSetAlive(const paxos::AliveUpdateRequest& request, paxos::
         revive();
     } 
     else if (!request.is_alive() && was_alive) {
-        if (newview_call_data_ != nullptr) {
-            std::cout << "[Node " << node_id_ << "] is in new-view processing, killing new-view call data as node is being killed." << std::endl;
-            newview_call_data_->Respond(paxos::Ack()); // clean up the call data
-        }
+        RespondAndClearNewViewCallData(); // safe: nulls member before Respond, so no double-Finish
         kill();
     }
     
-    std::cout << "[Node " << node_id_ << "] Executed alive update of is_alive="
+    LOG << "[Node " << node_id_ << "] Executed alive update of is_alive="
                 << request.is_alive() << std::endl;
 
 }
@@ -1982,20 +2007,20 @@ void PaxosNode::HandleMoveOn(const paxos::MoveOnRequest& request,
 {
     std::lock_guard<std::mutex> lock(pending_mutex_);
 
-    std::cout << "[Node " << node_id_ << "] Received MoveOn for client " 
+    LOG << "[Node " << node_id_ << "] Received MoveOn for client " 
               << request.client_id() << std::endl;
     
     if (role_ == Role::LEADER) {
-        std::cout << "[Node " << node_id_ << "] I am the leader." << std::endl;
+        LOG << "[Node " << node_id_ << "] I am the leader." << std::endl;
     }
 
     // Iterate over pending client calls and finish them
-    std::cout << "Size of pending calls before removal: " << pending_client_calls_.size() << std::endl;
+    LOG << "Size of pending calls before removal: " << pending_client_calls_.size() << std::endl;
     std::vector<int> to_erase; // store seqnums to remove from map
     for (const auto& [seqnum, call_data] : pending_client_calls_) {
         const auto& client_req = call_data->GetRequest(); // assuming getter exists
 
-        std::cout << "[Node " << node_id_ << "] Finishing pending request seqnum " 
+        LOG << "[Node " << node_id_ << "] Finishing pending request seqnum " 
                     << seqnum << " for client " << request.client_id() << std::endl;
 
         // Send empty TransactionAck to finish the RPC
@@ -2012,18 +2037,18 @@ void PaxosNode::HandleMoveOn(const paxos::MoveOnRequest& request,
         if (shard_map_[std::stoi(req.from_account())] == shard_map_[std::stoi(req.to_account())]){
             balance_locks_[std::stoi(req.from_account())].unlock();
             balance_locks_[std::stoi(req.to_account())].unlock();
-            std::cout << "[Node " << node_id_ << "] Released locks for client "
+            LOG << "[Node " << node_id_ << "] Released locks for client "
                       << req.from_account() << " and " << req.to_account() << std::endl;
         }
         pending_client_calls_.erase(seqnum);
     }
 
     // Remove queued client requests
-    std::cout<< "size of queued requests before removal: " << queued_client_requests_.size() << std::endl;
+    LOG<< "size of queued requests before removal: " << queued_client_requests_.size() << std::endl;
     auto it = queued_client_requests_.begin();
     while (it != queued_client_requests_.end()) {
 
-        std::cout << "[Node " << node_id_ << "] Removing queued request for client "
+        LOG << "[Node " << node_id_ << "] Removing queued request for client "
                     << request.client_id() << std::endl;
         paxos::TransactionAck empty_ack;
         it->call_data->Respond(empty_ack);
@@ -2082,7 +2107,7 @@ void PaxosNode::SendReplyToCoordLeader( SendClientRequestCallData* call_data, in
     reply.mutable_m()->CopyFrom(request);
 
 
-    std::cout << "[Leader] Node " << node_id_ 
+    LOG << "[Leader] Node " << node_id_ 
               << ": sending reply to Coordinator node " << request.from_account()
               << " for seqnum=" << seq_num
               << " status=" << two_pc_status << std::endl;
@@ -2090,15 +2115,15 @@ void PaxosNode::SendReplyToCoordLeader( SendClientRequestCallData* call_data, in
     int s = std::stoi(request.from_account());
     int coord_cluster_id_ = shard_map_[s];
 
-    std::cout << "coord cluster id is " << coord_cluster_id_ << std::endl;
-    std::cout << "leader for coord cluster id is " << cluster_leaders_[coord_cluster_id_] << std::endl;
+    LOG << "coord cluster id is " << coord_cluster_id_ << std::endl;
+    LOG << "leader for coord cluster id is " << cluster_leaders_[coord_cluster_id_] << std::endl;
     new TwoPCClientCallData(peer_stubs_[cluster_leaders_[coord_cluster_id_]], client_cq_.get(), this, reply); // changed
 
     if (call_data!= nullptr){
         // kill teh call_data 
         paxos::TransactionAck ack;
         call_data->Respond(ack); // clean up the call data
-        std::cout << "[Leader] Node " << node_id_ << ": cleaned up new-view call data " << std::endl;
+        LOG << "[Leader] Node " << node_id_ << ": cleaned up new-view call data " << std::endl;
     }
 
 
@@ -2106,7 +2131,7 @@ void PaxosNode::SendReplyToCoordLeader( SendClientRequestCallData* call_data, in
 
 void PaxosNode::HandlePreparedAndAborted(const paxos::TwoPCMsg& msg) {
 
-    std::cout << "[Node " << node_id_ << "] Received PrepareAndAbort message of type " 
+    LOG << "[Node " << node_id_ << "] Received PrepareAndAbort message of type " 
               << msg.type() << " for (" << msg.s() << ", " << msg.r() << ", " 
               << msg.amt() << ", " << msg.m().timestamp() << ")" << std::endl;
     
@@ -2114,18 +2139,18 @@ void PaxosNode::HandlePreparedAndAborted(const paxos::TwoPCMsg& msg) {
     // if you are the coord: check if ive finished executing corresponding 1st phase on coord end
     int s = std::stoi(msg.s());
     bool is_coord = shard_map_[s] == cluster_id_;
-    std::cout << "[Node " << node_id_ << "] is_coord = " << is_coord << std::endl;
+    LOG << "[Node " << node_id_ << "] is_coord = " << is_coord << std::endl;
     int ts = msg.m().timestamp();
     if (is_coord) {
         {
             std::lock_guard<std::mutex> lock(executed_entries_mutex_);
             if (executed_entries_.find(digest_to_seqnum_[ts]) != executed_entries_.end()) {
-                std::cout << "[Node " << node_id_ << "] Has executed 1st phase for timestamp " 
+                LOG << "[Node " << node_id_ << "] Has executed 1st phase for timestamp " 
                         << ts << ", can start 2nf phase" << std::endl;
                 StartSecondPhase(msg);
             }
             else {
-                std::cout << "[Node " << node_id_ << "] Has NOT executed 1st phase for timestamp " 
+                LOG << "[Node " << node_id_ << "] Has NOT executed 1st phase for timestamp " 
                         << ts << ", cannot start 2nf phase yet" << std::endl;
 
                 prepare_and_aborted_queue_[ts] = msg; // store for later processing
@@ -2135,7 +2160,7 @@ void PaxosNode::HandlePreparedAndAborted(const paxos::TwoPCMsg& msg) {
     }
     else {
         // participant just start second phase
-        std::cout << "[Node " << node_id_ << "] I am participant, starting 2nd phase for timestamp " 
+        LOG << "[Node " << node_id_ << "] I am participant, starting 2nd phase for timestamp " 
                   << ts << std::endl;
         StartSecondPhase(msg);
     }
@@ -2200,7 +2225,7 @@ void PaxosNode::StartSecondPhase(paxos::TwoPCMsg msg) {
         accept_msg.set_two_pc_status("C");
     }
     else {
-        std::cout << "Problem - case unhandled" << std::endl;
+        LOG << "Problem - case unhandled" << std::endl;
     }
 
 
@@ -2230,19 +2255,19 @@ void PaxosNode::StartSecondPhase(paxos::TwoPCMsg msg) {
 void PaxosNode::ExecuteRepeatedTwoPCEntry(paxos::CommitEntry entry) {
 
 
-    std::cout << "[Node " << node_id_ << "] Enter Re-executing TwoPC CommitEntry for seqnum " 
+    LOG << "[Node " << node_id_ << "] Enter Re-executing TwoPC CommitEntry for seqnum " 
               << entry.seqnum() << " with 2PC status " << entry.two_pc_status() << std::endl;
 
     std::string two_pc_status = entry.two_pc_status();
     int seqnum = entry.seqnum();
-    std::cout << "[Node " << node_id_ << (entry.m().from_account()) << (entry.m().to_account())  << std::endl;
+    LOG << "[Node " << node_id_ << (entry.m().from_account()) << (entry.m().to_account())  << std::endl;
     int from = std::stoi((entry.m().from_account()));
     int to = std::stoi(entry.m().to_account());
 
    if (two_pc_status == "A_COORD") {
         // use WAL to undo executions and then release locks
 
-        std::cout << "[Node " << node_id_ << "] Undoing effects of aborted transaction for seqnum " 
+        LOG << "[Node " << node_id_ << "] Undoing effects of aborted transaction for seqnum " 
                   << entry.seqnum() << " from " << from << " to " << to << std::endl;
         WalEntry x;
         {
@@ -2252,18 +2277,18 @@ void PaxosNode::ExecuteRepeatedTwoPCEntry(paxos::CommitEntry entry) {
         }
 
         
-        std::cout << "[Node " << node_id_ << "] wal entry is (" << x.before_value << ", " << x.after_value << ")" << std::endl;
+        LOG << "[Node " << node_id_ << "] wal entry is (" << x.before_value << ", " << x.after_value << ")" << std::endl;
         accounts_[from] = x.before_value;
         //SetBalance(from, false);
         balance_locks_[from].unlock();
 
         
 
-        std::cout << "[Node " << node_id_ << "] new balance of account " << from << " is " << accounts_[from] << std::endl;
+        LOG << "[Node " << node_id_ << "] new balance of account " << from << " is " << accounts_[from] << std::endl;
 
     }
     else if (two_pc_status == "C_COORD") {
-        std::cout << "[Node " << node_id_ << "] Committing transaction for seqnum " 
+        LOG << "[Node " << node_id_ << "] Committing transaction for seqnum " 
                   << entry.seqnum() << " from " << from << " to " << to << std::endl;
         // release locks
         balance_locks_[from].unlock();
@@ -2275,7 +2300,7 @@ void PaxosNode::ExecuteRepeatedTwoPCEntry(paxos::CommitEntry entry) {
 
     }
     else if (two_pc_status == "C") {
-        std::cout << "[Node " << node_id_ << "] Committing participant transaction for seqnum " 
+        LOG << "[Node " << node_id_ << "] Committing participant transaction for seqnum " 
                   << entry.seqnum() << " from " << from << " to " << to << std::endl;
         // release locks 
         balance_locks_[to].unlock();
@@ -2286,7 +2311,7 @@ void PaxosNode::ExecuteRepeatedTwoPCEntry(paxos::CommitEntry entry) {
 
     }
     else if (two_pc_status == "A_PART_COMMIT") {  
-        std::cout << "[Node " << node_id_ << "] Undoing effects of aborted participant transaction for seqnum " 
+        LOG << "[Node " << node_id_ << "] Undoing effects of aborted participant transaction for seqnum " 
                   << entry.seqnum() << " from " << from << " to " << to << std::endl; 
 
         {
@@ -2296,14 +2321,14 @@ void PaxosNode::ExecuteRepeatedTwoPCEntry(paxos::CommitEntry entry) {
             // if participant aborts, I do not make a WAL entry, but in the case that the participant prepared, 
             // but the coord sends a 2nd phase abort, there will be a WAL entry
             if (it != wal_.end()) {
-                std::cout << "[Node " << node_id_ << "] wal entry is (" << it->second.before_value << ", " << it->second.after_value << ")" << std::endl;
+                LOG << "[Node " << node_id_ << "] wal entry is (" << it->second.before_value << ", " << it->second.after_value << ")" << std::endl;
                 accounts_[to] = it->second.before_value;
                 //SetBalance(to, false);
                 wal_.erase(seqnum); // remove wal entry
             }
         }
         balance_locks_[to].unlock();
-        std::cout << "[Node " << node_id_ << "] new balance of account " << to << " is " << accounts_[to] << std::endl;
+        LOG << "[Node " << node_id_ << "] new balance of account " << to << " is " << accounts_[to] << std::endl;
     }
 
     // send replies
@@ -2332,7 +2357,7 @@ void PaxosNode::ExecuteRepeatedTwoPCEntry(paxos::CommitEntry entry) {
 
 void PaxosNode::HandleCommittedAndAborted(const paxos::TwoPCMsg& msg) {
 
-    std::cout << "[Node " << node_id_ << "] Received CommittedAndAborted message of type " 
+    LOG << "[Node " << node_id_ << "] Received CommittedAndAborted message of type " 
               << msg.type() << " for (" << msg.r() << ", " << msg.s() << ", " 
               << msg.amt() << ", " << msg.m().timestamp() << ")" << std::endl;
     
@@ -2355,7 +2380,7 @@ void PaxosNode::TransactionRetryLoop() {
                 && now - entry.last_send >= timeout) {
                 
                 entry.last_send = now;
-                std::cout << "[Node " << node_id_ << "] retrying 2PC commit/abort message for timestamp " 
+                LOG << "[Node " << node_id_ << "] retrying 2PC commit/abort message for timestamp " 
                           << entry.msg.m().timestamp() << " of type " << entry.msg.type() << std::endl;
             }
         }
@@ -2365,7 +2390,7 @@ void PaxosNode::TransactionRetryLoop() {
                 !entry.completed.load() 
                 && now - entry.last_send >= timeout) {
                 
-                std::cout << "[Node " << node_id_ << "] coord aborting txn due to timeout for prepare " << std::endl;
+                LOG << "[Node " << node_id_ << "] coord aborting txn due to timeout for prepare " << std::endl;
                 entry.completed = true; // stop retrying
                 HandlePreparedTimeout(entry.msg.m().timestamp());
             }
@@ -2397,7 +2422,7 @@ void PaxosNode::SendClientReplyTwoPC(const paxos::CommitEntry entry, int seq_num
     reply.set_timestamp(request.timestamp());
     reply.set_success(success);
     reply.set_from_this_term(seq_num > max_seqnum_in_new_view_);
-    std::cout << "set from this term to " << (seq_num > max_seqnum_in_new_view_) << std::endl;
+    LOG << "set from this term to " << (seq_num > max_seqnum_in_new_view_) << std::endl;
 
 
     // Cache reply for exactly-once semantics
@@ -2407,7 +2432,7 @@ void PaxosNode::SendClientReplyTwoPC(const paxos::CommitEntry entry, int seq_num
     }
 
 
-    std::cout << "[Leader] Node " << node_id_ 
+    LOG << "[Leader] Node " << node_id_ 
               << ": sending reply (2pc) to client " << request.from_account()
               << " for seqnum=" << seq_num
               << " success=" << success << std::endl;
@@ -2419,7 +2444,7 @@ void PaxosNode::SendClientReplyTwoPC(const paxos::CommitEntry entry, int seq_num
 
 void PaxosNode::HandlePreparedTimeout(int timestamp) {
 
-    std::cout << "[Node " << node_id_ << "] hasnt received PREPARED/ABORTED from backup node, aborting for Coord end " 
+    LOG << "[Node " << node_id_ << "] hasnt received PREPARED/ABORTED from backup node, aborting for Coord end " 
                << std::endl;
 
 
@@ -2515,7 +2540,7 @@ void PaxosNode::ResetNode() {
 
     for (int i = 1; i <= num_clusters_ ; ++i) {
         cluster_leaders_[i] = divisor_ * (i - 1) + 1;
-        std::cout << "Cluster " << i << " leader is Node " << cluster_leaders_[i] << std::endl;
+        LOG << "Cluster " << i << " leader is Node " << cluster_leaders_[i] << std::endl;
     }
     for (int i = 1; i <= 9000; ++i) {
         accounts_[i] = 10.0;
@@ -2578,7 +2603,7 @@ void PaxosNode::InitializeDatabase() {
             std::cerr << "SQL error: " << errmsg << std::endl;
             sqlite3_free(errmsg);
         } else {
-            std::cout << "Node " << node_id_ << ": All balances reset to 10." << std::endl;
+            LOG << "Node " << node_id_ << ": All balances reset to 10." << std::endl;
         }
     } else {
         // Insert missing rows with balance = 10
@@ -2593,7 +2618,7 @@ void PaxosNode::InitializeDatabase() {
                 sqlite3_reset(insert_stmt);
             }
             sqlite3_finalize(insert_stmt);
-            std::cout << "Node " << node_id_ << ": Database initialized with 9000 items." << std::endl;
+            LOG << "Node " << node_id_ << ": Database initialized with 9000 items." << std::endl;
         } else {
             std::cerr << "Failed to prepare insert statement: " << sqlite3_errmsg(db_) << std::endl;
         }

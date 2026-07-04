@@ -275,9 +275,14 @@ private:
 
     void MergeAcceptLogsFromPromises();  
     
-    NewViewCallData* newview_call_data_ = nullptr; 
-    bool in_new_view_ = false; 
+    NewViewCallData* newview_call_data_ = nullptr;
+    std::mutex newview_cd_mutex_; // guards newview_call_data_ against concurrent Respond/clear across threads
+    bool in_new_view_ = false;
     int max_seqnum_in_new_view_ = 0;
+
+    // Atomically take ownership of newview_call_data_ (nulling the member) and
+    // Respond exactly once, preventing double-Finish/double-free of the call data.
+    void RespondAndClearNewViewCallData();
     
     bool alive_before_prompt_ = true; // to track if node was alive before prompt since its shut to dead during prompt
 

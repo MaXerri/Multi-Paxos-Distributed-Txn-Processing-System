@@ -5,6 +5,7 @@
 #include "paxos_node.h"
 #include "paxos_client.h"
 #include "benchmark.h"
+#include "log.h"
 #include <fstream>
 #include <vector>
 #include <boost/algorithm/string.hpp>
@@ -14,6 +15,7 @@
 #include <signal.h>
 #include <sys/select.h>
 #include <unistd.h>
+#include <cstdio>
 
 
 std::atomic<int> remaining_transactions{0};
@@ -28,9 +30,20 @@ std::chrono::steady_clock::time_point start_time;
 std::chrono::steady_clock::time_point end_time;
 
 
-void run_node(int node_id, const std::unordered_map<int, std::string>& node_addresses, std::vector<std::string> client_ids, 
+void run_node(int node_id, const std::unordered_map<int, std::string>& node_addresses, std::vector<std::string> client_ids,
                std::unordered_map<int, int> shard_map, int num_clusters) {
-    
+
+    // Redirect this node process's stdout+stderr to its own file so that when a
+    // node crashes (malloc corruption / abort / segv) its message and the log
+    // context leading up to it are captured separately, instead of being lost in
+    // the interleaved parent pty. Files land in the cwd (build/) as node_<id>.log.
+    {
+        std::string logpath = "node_" + std::to_string(node_id) + ".log";
+        if (std::freopen(logpath.c_str(), "w", stdout) != nullptr) {
+            dup2(fileno(stdout), fileno(stderr)); // merge node stderr into the same file
+        }
+    }
+
     PaxosNode::Role role = PaxosNode::Role::BACKUP; // everyone starts as backup
 
     std::unordered_map<std::string, std::string> client_addr;
@@ -94,7 +107,7 @@ void StartClientRequests(const std::string& client_id,
     }
 
 
-    std::cout << "testing client send" << std::endl;
+    LOG << "testing client send" << std::endl;
     if (!set_num_empty) {
         
     }
@@ -125,7 +138,7 @@ std::unordered_map<int,int> Reshard(
     }
     // 2. Count cross-cluster transactions per item
     std::vector<int> cross_count(total_items + 1, 0);
-    std::cout << transactions.size() << std::endl;
+    LOG << transactions.size() << std::endl;
     for (const auto& t : transactions) {
         int s = t.first;
         int r = t.second;
@@ -358,7 +371,7 @@ bool SendMoveOn(std::shared_ptr<paxos::Paxos::Stub>& stub, int target_node_id) {
         std::cerr << "[Client] MoveOn RPC failed: " << status.error_message() << std::endl;
         return false;
     } else{
-        std::cout << "[Client] MoveOn RPC to node " << target_node_id 
+        LOG << "[Client] MoveOn RPC to node " << target_node_id 
                   << " succeeded: " <<  std::endl;
     }
 
@@ -396,7 +409,7 @@ void InputThread(std::unordered_map<std::string, std::unique_ptr<ClientContext>>
                     std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
                     return; // exit thread
                 } else {
-                    std::cout << "Unrecognized input: " << input << std::endl;
+                    LOG << "Unrecognized input: " << input << std::endl;
                 }
             }
         }
@@ -456,11 +469,11 @@ int main(int argc, char* argv[]) {
 
     if (benchmark_mode) {
         filename = "benchmark.csv";
-        std::cout << "Running in benchmark mode." << std::endl;
+        LOG << "Running in benchmark mode." << std::endl;
         srand(time(nullptr));
         generate_txns(total_txns, TOTAL_ITEMS, num_clusters, {"n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8", "n9"}, read_pct, cross_shard_pct, skewness);
     } else {
-        std::cout << "Running in normal mode." << std::endl;
+        LOG << "Running in normal mode." << std::endl;
     }
 
 
@@ -486,13 +499,13 @@ int main(int argc, char* argv[]) {
         } else if (pid == 0) {
             // Child process: run a single node
             run_node(id, node_addresses, client_ids, r, num_clusters);
-            std::cout << "Problem: node process exited unexpectedly." << std::endl;
+            LOG << "Problem: node process exited unexpectedly." << std::endl;
             exit(0); // should never reach here
         } else {
             node_pid_map[id] = pid;
         }
     }
-    std::cout << "Launched all nodes." << std::endl;
+    LOG << "Launched all nodes." << std::endl;
 
     // stubs for nodes to send alive updates
     std::unordered_map<int, std::shared_ptr<paxos::Paxos::Stub>> stubs;
@@ -571,7 +584,7 @@ int main(int argc, char* argv[]) {
     // this needs a rework to support multiple threads reading different files or 1 file
 
 
-    std::cout << "[Parent] Reading transactions from file..." << std::endl;
+    LOG << "[Parent] Reading transactions from file..." << std::endl;
     std::string line;
     std::thread input_thread = std::thread(InputThread, ref(clients));
     int num = 0;
@@ -592,24 +605,24 @@ int main(int argc, char* argv[]) {
         
         // allow for prompting between sets
         if (!fields[0].empty() && current_set_number != 0) {
-            std::cout << "[Parent] Waiting for client responses..." << std::endl;
+            LOG << "[Parent] Waiting for client responses..." << std::endl;
             
             while (remaining_transactions.load() > 0) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
             stop_input = true;
-            std::cout << "Passed the while loop" << std::endl;
+            LOG << "Passed the while loop" << std::endl;
             
             
             if (input_thread.joinable()) {
                 input_thread.join();
-                std::cout << "joined back" << std::endl;
+                LOG << "joined back" << std::endl;
             } else {
-                std::cout << "input thread not joinable" << std::endl;
+                LOG << "input thread not joinable" << std::endl;
             }
             
             
-            std::cout << "starting pause sequence to query user" << std::endl;
+            LOG << "starting pause sequence to query user" << std::endl;
             SendAliveUpdateAsync(std::set<int>{}, stubs, parent_cq, false, false,-1, true); // prompt pause true
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
             PromptUser(stubs, r, num_clusters, parent_cq);
@@ -642,7 +655,7 @@ int main(int argc, char* argv[]) {
 
         if (transaction_str[0] == 'F') { // fail leader
             leader_fail = true;
-            std::cout << "parseed as f" << std::endl;
+            LOG << "parseed as f" << std::endl;
             // Find 'n' and the closing ')'
             size_t n_pos = transaction_str.find('n');
             size_t end_pos = transaction_str.find(')', n_pos);
@@ -725,18 +738,18 @@ int main(int argc, char* argv[]) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(180));
             }
 
-            std::cout << "Initiating transaction of " << amount
+            LOG << "Initiating transaction of " << amount
                     << " dollars from node " << from_node
                     << " to node " << to_node
                     << " in set " << current_set_number.load()
                     << " with active nodes [";
             bool first = true;
             for (int node_id : active_nodes_set) {
-                if (!first) std::cout << ",";
-                std::cout << node_id;
+                if (!first) LOG << ",";
+                LOG << node_id;
                 first = false;
             }
-            std::cout << "]" << 
+            LOG << "]" << 
             "with ts=" << num << std::endl;
 
             paxos::ClientRequest request;
@@ -748,15 +761,20 @@ int main(int argc, char* argv[]) {
             num++;
 
             remaining_transactions++;
-            std::cout << "pushing back transaction (" << from_c << ", " << to_c << ")" << std::endl;
+            LOG << "pushing back transaction (" << from_c << ", " << to_c << ")" << std::endl;
             transactions_processed.push_back({from_c, to_c});
             StartClientRequests(from_node, clients, active_nodes_set, set_num_empty , node_addresses.size(), stubs, parent_cq, request);
         }
         else {
             // leader fail: wait for preceding transactions to finish, then kill or recover 
-            std::cout << "fail or reco - waiting" << std::endl;
+            LOG << "fail or reco - waiting" << std::endl;
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            //TODO: wait for the prior transactions to finish up and then fail leader
+            while (remaining_transactions.load() > 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
             SendAliveUpdateAsync(active_nodes_set, stubs, parent_cq, leader_fail, recover, leader_fail ? fail_node_id : recover_node_id); 
             std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
@@ -769,15 +787,15 @@ int main(int argc, char* argv[]) {
     while (remaining_transactions.load() > 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    std::cout << "All transactions processed." << std::endl;
+    LOG << "All transactions processed." << std::endl;
 
     // close the input thread 
     stop_input = true;
     if (input_thread.joinable()) {
         input_thread.join();
-        std::cout << "joined back" << std::endl;
+        LOG << "joined back" << std::endl;
     } else {
-        std::cout << "input thread not joinable" << std::endl;
+        LOG << "input thread not joinable" << std::endl;
     }
     
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
@@ -789,7 +807,7 @@ int main(int argc, char* argv[]) {
 
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
-    std::cout << "Shutting down..." << std::endl;
+    LOG << "Shutting down..." << std::endl;
     
 
 // SHUTDOWN
@@ -818,5 +836,5 @@ if (cq_thread.joinable()) cq_thread.join();
 
 clients.clear();
 
-std::cout << "Cleanup complete. Exiting." << std::endl;
+LOG << "Cleanup complete. Exiting." << std::endl;
 }

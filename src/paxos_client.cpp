@@ -1,5 +1,6 @@
 #include "paxos_client.h"
 #include "call_data.h"
+#include "log.h"
 #include <iostream>
 
 PaxosClient::PaxosClient(const std::string& server_address, 
@@ -25,7 +26,7 @@ PaxosClient::PaxosClient(const std::string& server_address,
         StartPolling();
         timer_thread_ = std::thread([this]() { TimerLoop(); });
         
-        std::cout << "[Client " << client_id_ << "] Starting server at " << server_address << std::endl;
+        LOG << "[Client " << client_id_ << "] Starting server at " << server_address << std::endl;
         StartServer(server_address); 
         
     }
@@ -101,7 +102,7 @@ while (true) {
         if (!req->active.load()) {
             req->active.store(true);
             req->expiry = now + retry_interval_;
-            std::cout << "[Client " << client_id_ << "] Sending request (ts=" 
+            LOG << "[Client " << client_id_ << "] Sending request (ts=" 
                       << req->request.timestamp() << ") from " << req->request.from_account() << std::endl;
             SendToLeader(req->request, nullptr);
         } else {
@@ -124,7 +125,7 @@ while (true) {
 void PaxosClient::SendRequest(const paxos::ClientRequest& request,
                              std::function<void(const paxos::TransactionAck&)> callback) {
 
-    std::cout << "[Client " << client_id_ << "] Queuing transaction request (client_id=" 
+    LOG << "[Client " << client_id_ << "] Queuing transaction request (client_id=" 
               << request.client_id() << ", from_account=" 
               << request.from_account() << ", to_account=" 
               << request.to_account() << ", amount=" 
@@ -153,9 +154,9 @@ void PaxosClient::SendToLeader(
 {
     int leader_id;
     std::shared_ptr<paxos::Paxos::Stub> leader_stub;
-    std::cout << "from account: " << request.from_account() << std::endl;
+    LOG << "from account: " << request.from_account() << std::endl;
     int cluster = sharding_map[std::stoi(request.from_account())];
-    std::cout << "[Client] determined cluster " << cluster << " for from_account " 
+    LOG << "[Client] determined cluster " << cluster << " for from_account " 
               << request.from_account() << std::endl;
     {
         std::lock_guard<std::mutex> lock(stub_mutex_);
@@ -170,7 +171,7 @@ void PaxosClient::SendToLeader(
         }
     }
 
-    std::cout << "[Client] making SendToLeader RPC to node " << leader_id << "of cluster " << cluster
+    LOG << "[Client] making SendToLeader RPC to node " << leader_id << "of cluster " << cluster
               << " (ts=" << request.timestamp() << ")\n";
 
 
@@ -198,7 +199,7 @@ void PaxosClient::BroadcastRequest(
         if (node_id >= start_node && node_id <=end_node){
             auto call = new AsyncCall(stub_ptr, cq_.get(), request, callback);
 
-            std::cout << "[Client] Broadcast sent to node " << node_id
+            LOG << "[Client] Broadcast sent to node " << node_id
                     << " (ts=" << request.timestamp() << ")" << std::endl;
         }
     }
@@ -235,7 +236,7 @@ void PaxosClient::StartServer(const std::string& address) {
 
 
     int num_server_threads = 1; // or 1/2 of available cores for async server
-    std::cout << "[Client " << client_id_ << "] Starting " << num_server_threads 
+    LOG << "[Client " << client_id_ << "] Starting " << num_server_threads 
               << " server threads for handling incoming requests." << std::endl;
     for (int i = 0; i < num_server_threads; ++i) {
         server_threads_.emplace_back([this]() { PollServerQueue(); });
@@ -267,7 +268,7 @@ void PaxosClient::PollServerQueue() {
 
 
 void PaxosClient::HandleLeaderReply(const paxos::ClientReply& reply) {
-    std::cout << "[CLIENT " << client_id_ << "] Received reply from leader (ts="
+    LOG << "[CLIENT " << client_id_ << "] Received reply from leader (ts="
               << reply.timestamp() << ")\n";
 
     {
@@ -277,7 +278,7 @@ void PaxosClient::HandleLeaderReply(const paxos::ClientReply& reply) {
         auto it = inflight_.find(reply.timestamp());
 
         if (it != inflight_.end()) {
-            //std::cout << "[CLIENT " << client_id_ << "] Matching pending request found (ts="
+            //LOG << "[CLIENT " << client_id_ << "] Matching pending request found (ts="
             //          << reply.timestamp() << "), removing from pending list.\n";
             it->second->completed.store(true); // shared ptr could still hold a reference in snapshot
             inflight_.erase(it);
@@ -286,7 +287,7 @@ void PaxosClient::HandleLeaderReply(const paxos::ClientReply& reply) {
     }
 
 
-    //std::cout << "[CLIENT " << client_id_ << "] Transaction committed successfully (ts="
+    //LOG << "[CLIENT " << client_id_ << "] Transaction committed successfully (ts="
     //            << reply.timestamp() << ")\n";
 
     int new_leader_id = reply.ballot().node_id();
@@ -302,7 +303,7 @@ void PaxosClient::HandleLeaderReply(const paxos::ClientReply& reply) {
     if (reply.from_this_term()) {
         extern std::atomic<int> remaining_transactions;  
         --remaining_transactions;
-        std::cout << "[CLIENT " << client_id_ << "] decrementing total transactions. Remaining transactions: " 
+        LOG << "[CLIENT " << client_id_ << "] decrementing total transactions. Remaining transactions: " 
                 << remaining_transactions.load() << std::endl;
         if (remaining_transactions.load() == 0) {
             extern std::chrono::steady_clock::time_point end_time;
@@ -310,7 +311,7 @@ void PaxosClient::HandleLeaderReply(const paxos::ClientReply& reply) {
         }
     }
     else {
-        std::cout << "[CLIENT " << client_id_ << "] Reply not from this term, part of NV, not decrementing remaining transactions.\n";
+        LOG << "[CLIENT " << client_id_ << "] Reply not from this term, part of NV, not decrementing remaining transactions.\n";
     }
 
 }
@@ -324,14 +325,14 @@ bool PaxosClient::SendMoveOn(const std::string& client_id, int target_node_id) {
 
     auto it = node_stubs_.find(target_node_id);
 
-    std::cout << "[Client " << client_id_ << "] Sending MoveOn to node " << target_node_id << std::endl;
+    LOG << "[Client " << client_id_ << "] Sending MoveOn to node " << target_node_id << std::endl;
     grpc::Status status = it->second->SendMoveOn(&context, request, &reply);
 
     if (!status.ok()) {
         std::cerr << "[Client] MoveOn RPC failed: " << status.error_message() << std::endl;
         return false;
     } else{
-        std::cout << "[Client] MoveOn RPC to node " << target_node_id 
+        LOG << "[Client] MoveOn RPC to node " << target_node_id 
                   << " succeeded: " <<  std::endl;
     }
 
@@ -363,7 +364,7 @@ void PaxosClient::HandleMoveOn() {
 
     extern std::atomic<int> remaining_transactions;  
     remaining_transactions -= size_pending;
-    std::cout << "[Client " << client_id_ << "] Received MoveOn, clearing " << size_pending 
+    LOG << "[Client " << client_id_ << "] Received MoveOn, clearing " << size_pending 
               << " pending requests. Remaining transactions: " 
               << remaining_transactions.load() << std::endl;
     pending_cv_.notify_one();
