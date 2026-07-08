@@ -1672,7 +1672,7 @@ void PaxosNode::OnElectionComplete() {
 
     }
 
-    if (leader_id_ != -1)  { // otherwise forwarding blindly - TODO: maybe add condition to prevent 1 broadcast by client before handling
+    if (leader_id_ != -1 )  { // otherwise forwarding blindly - TODO: maybe add condition to prevent 1 broadcast by client before handling
 
         {
             std::lock_guard<std::mutex> lock(queued_mutex_);
@@ -1770,6 +1770,7 @@ void PaxosNode::BecomeLeader(Ballot ballot) {
         std::lock_guard<std::mutex> lock(election_mutex_);
         role_ = Role::LEADER;
         current_ballot_ = ballot;
+        leader_id_ = node_id_;
     }
 
     LOG << "Node " << node_id_ << " officially becomes leader with ballot " << ballot.ToString() << std::endl;
