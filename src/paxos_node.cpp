@@ -1852,22 +1852,36 @@ void PaxosNode::DemoteToBackup() {
                 bool is_coordinator = (cluster_id_ == shard_map_[from_account]);
 
                 if (is_coordinator) {
-                    // Revert deduction
-                    accounts_[from_account] = wal_entry.before_value;
+                    // Coordinator in-flight debit ("COORD"): KEEP the debit (don't
+                    // revert) and KEEP the WAL (advance without erasing) so phase-2
+                    // resolves it -- C_COORD finalizes, A_COORD undoes it via the WAL.
+                    // Reverting here silently drops a debit that will commit, and
+                    // catch-up won't re-apply it because last_executed_seq_ already
+                    // passed this seqnum: the coordinator-side mirror of the demo3/q9
+                    // participant off-by-one (e.g. q8 acct 3005 stuck at 10). Release
+                    // the lock (a backup holding this debit doesn't hold it).
                     balance_locks_[from_account].unlock();
-                    LOG << "Reverted account " << from_account
-                            << " to " << wal_entry.before_value
-                            << " as part of demotion." << std::endl;
+                    ++it;
+                    continue;
                 } else {
                     int to_account = std::stoi(req.to_account());
-                    // Revert addition
-                    accounts_[to_account] = wal_entry.before_value;
+                    // Participant in-flight credit ("P"): KEEP the credit (don't
+                    // revert) and KEEP the WAL (advance without erasing) so phase-2
+                    // resolves it -- C finalizes, A_PART_COMMIT undoes it via the WAL.
+                    // Reverting here silently drops a credit that will commit, and
+                    // catch-up won't re-apply it because last_executed_seq_ already
+                    // passed this seqnum (the demo3/q9 4001 off-by-one). But still
+                    // RELEASE the lock: a backup holding this credit doesn't hold the
+                    // balance lock (only the leader's request path takes it), so match
+                    // that and avoid leaking it.
                     balance_locks_[to_account].unlock();
+                    ++it;
+                    continue;
                 }
 
-                // erase and move iterator forward
+                // erase and move iterator forward (coordinator entries only)
                 it = wal_.erase(it);
-            }       
+            }
         }
     } 
 }
