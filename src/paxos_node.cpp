@@ -1694,6 +1694,15 @@ void PaxosNode::OnElectionComplete() {
             int seqnum = it->first;
             auto& wal_entry = it->second;
 
+            // A committed 2PC (phase2_result C_COORD/C) whose WAL is still present is
+            // a catch-up replay artifact -- its balance is final, so finalize (drop
+            // WAL), never revert (that was Mode B). Aborted/in-flight still revert.
+            const std::string& p2 = accept_log_[seqnum].phase2_result();
+            if (p2 == "C_COORD" || p2 == "C") {
+                it = wal_.erase(it);
+                continue;
+            }
+
             paxos::ClientRequest req = accept_log_[seqnum].request();
             int from_account = std::stoi(req.from_account());
             bool is_coordinator = (cluster_id_ == shard_map_[from_account]);
@@ -1781,8 +1790,13 @@ void PaxosNode::BecomeLeader(Ballot ballot) {
 void PaxosNode::DemoteToBackup() {
     {
         role_ = Role::BACKUP;
-        LOG << "Node " << node_id_ 
-                  << " demoted to backup. Current ballot: " 
+        // Clear our own leadership claim. BecomeLeader sets leader_id_ = node_id_,
+        // so a node that was briefly leader must reset it here -- otherwise it stays
+        // a BACKUP with leader_id_ == node_id_, and forwarding a client request then
+        // hits the leader_id_ == node_id_ std::abort() guard (crash -> cluster stall).
+        leader_id_ = -1;
+        LOG << "Node " << node_id_
+                  << " demoted to backup. Current ballot: "
                   << current_ballot_.ToString() << std::endl;
 
         waiting_for_promises_ = false; // no longer in election
@@ -1824,6 +1838,14 @@ void PaxosNode::DemoteToBackup() {
             for (auto it = wal_.begin(); it != wal_.end(); ) {
                 int seqnum = it->first;
                 auto& wal_entry = it->second;
+
+                // Committed 2PC (phase2_result C_COORD/C): catch-up replay artifact,
+                // balance is final -- finalize (drop WAL), never revert.
+                const std::string& p2 = accept_log_[seqnum].phase2_result();
+                if (p2 == "C_COORD" || p2 == "C") {
+                    it = wal_.erase(it);
+                    continue;
+                }
 
                 paxos::ClientRequest req = accept_log_[seqnum].request();
                 int from_account = std::stoi(req.from_account());
@@ -2264,6 +2286,18 @@ void PaxosNode::ExecuteRepeatedTwoPCEntry(paxos::CommitEntry entry) {
     LOG << "[Node " << node_id_ << (entry.m().from_account()) << (entry.m().to_account())  << std::endl;
     int from = std::stoi((entry.m().from_account()));
     int to = std::stoi(entry.m().to_account());
+
+    // Record the COMMITTED 2PC outcome onto the log entry (once) so it ships in
+    // NEW-VIEW -> a recovering node learns commit-vs-abort and its revert loops keep
+    // committed catch-up WAL instead of corrupting it (Mode B). Only commits recorded;
+    // aborts are handled by the default revert.
+    if (two_pc_status == "C_COORD" || two_pc_status == "C") {
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        auto ait = accept_log_.find(seqnum);
+        if (ait != accept_log_.end() && ait->second.phase2_result().empty()) {
+            ait->second.set_phase2_result(two_pc_status);
+        }
+    }
 
    if (two_pc_status == "A_COORD") {
         // use WAL to undo executions and then release locks
