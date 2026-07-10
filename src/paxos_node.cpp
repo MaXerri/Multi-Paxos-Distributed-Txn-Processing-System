@@ -1694,9 +1694,8 @@ void PaxosNode::OnElectionComplete() {
             int seqnum = it->first;
             auto& wal_entry = it->second;
 
-            // A committed 2PC (phase2_result C_COORD/C) whose WAL is still present is
-            // a catch-up replay artifact -- its balance is final, so finalize (drop
-            // WAL), never revert (that was Mode B). Aborted/in-flight still revert.
+            // Committed 2PC (phase2_result C_COORD/C): catch-up replay artifact whose
+            // balance is final -- finalize (drop WAL), never revert (Mode B).
             const std::string& p2 = accept_log_[seqnum].phase2_result();
             if (p2 == "C_COORD" || p2 == "C") {
                 it = wal_.erase(it);
@@ -1706,24 +1705,29 @@ void PaxosNode::OnElectionComplete() {
             paxos::ClientRequest req = accept_log_[seqnum].request();
             int from_account = std::stoi(req.from_account());
             bool is_coordinator = (cluster_id_ == shard_map_[from_account]);
+            int acct = is_coordinator ? from_account : std::stoi(req.to_account());
 
-            if (is_coordinator) {
-                // Revert deduction
-                accounts_[from_account] = wal_entry.before_value;
-                balance_locks_[from_account].unlock();
-                LOG << "Reverted account " << from_account
-                        << " to " << wal_entry.before_value
-                        << " as part of demotion." << std::endl;
-            } else {
-                int to_account = std::stoi(req.to_account());
-                // Revert addition
-                accounts_[to_account] = wal_entry.before_value;
-                balance_locks_[to_account].unlock();
+            if (p2 == "A_COORD" || p2 == "A_PART_COMMIT") {
+                // Aborted: undo via DELTA (reverse this op) rather than setting the
+                // account to WAL.before. Absolute revert is wrong when catch-up applied
+                // other ops on this account afterward -- it discards them (the q8 ==9
+                // acct-3 off-by-one: node 2 replayed an aborted debit, then a committed
+                // credit; absolute revert to 10 dropped the credit; delta gives 11).
+                accounts_[acct] += (wal_entry.before_value - wal_entry.after_value);
+                balance_locks_[acct].unlock();
+                it = wal_.erase(it);
+                continue;
             }
 
-            // erase and move iterator forward
+            // In-flight (undecided outcome): revert as before.
+            accounts_[acct] = wal_entry.before_value;
+            balance_locks_[acct].unlock();
+            if (is_coordinator) {
+                LOG << "Reverted account " << acct << " to " << wal_entry.before_value
+                        << " as part of demotion." << std::endl;
+            }
             it = wal_.erase(it);
-        }       
+        }
     }
 
 }
@@ -1850,37 +1854,26 @@ void PaxosNode::DemoteToBackup() {
                 paxos::ClientRequest req = accept_log_[seqnum].request();
                 int from_account = std::stoi(req.from_account());
                 bool is_coordinator = (cluster_id_ == shard_map_[from_account]);
+                int acct = is_coordinator ? from_account : std::stoi(req.to_account());
 
-                if (is_coordinator) {
-                    // Coordinator in-flight debit ("COORD"): KEEP the debit (don't
-                    // revert) and KEEP the WAL (advance without erasing) so phase-2
-                    // resolves it -- C_COORD finalizes, A_COORD undoes it via the WAL.
-                    // Reverting here silently drops a debit that will commit, and
-                    // catch-up won't re-apply it because last_executed_seq_ already
-                    // passed this seqnum: the coordinator-side mirror of the demo3/q9
-                    // participant off-by-one (e.g. q8 acct 3005 stuck at 10). Release
-                    // the lock (a backup holding this debit doesn't hold it).
-                    balance_locks_[from_account].unlock();
-                    ++it;
-                    continue;
-                } else {
-                    int to_account = std::stoi(req.to_account());
-                    // Participant in-flight credit ("P"): KEEP the credit (don't
-                    // revert) and KEEP the WAL (advance without erasing) so phase-2
-                    // resolves it -- C finalizes, A_PART_COMMIT undoes it via the WAL.
-                    // Reverting here silently drops a credit that will commit, and
-                    // catch-up won't re-apply it because last_executed_seq_ already
-                    // passed this seqnum (the demo3/q9 4001 off-by-one). But still
-                    // RELEASE the lock: a backup holding this credit doesn't hold the
-                    // balance lock (only the leader's request path takes it), so match
-                    // that and avoid leaking it.
-                    balance_locks_[to_account].unlock();
-                    ++it;
+                if (p2 == "A_COORD" || p2 == "A_PART_COMMIT") {
+                    // Aborted: undo via DELTA (reverse this op), correct even if catch-up
+                    // applied other ops on this account afterward (q8 ==9 acct-3 fix).
+                    accounts_[acct] += (wal_entry.before_value - wal_entry.after_value);
+                    balance_locks_[acct].unlock();
+                    it = wal_.erase(it);
                     continue;
                 }
 
-                // erase and move iterator forward (coordinator entries only)
-                it = wal_.erase(it);
+                // In-flight (undecided outcome): KEEP the change + WAL so phase-2 resolves
+                // it (C/C_COORD finalizes; an abort is handled by the delta-undo above once
+                // the A_* outcome is known). Reverting here would drop a change that will
+                // commit and catch-up won't re-apply (last_executed_seq_ passed it): the
+                // demo3/q9 4001 + q8 3005 off-by-ones. Release the lock (a backup that
+                // holds this in-flight change doesn't hold the balance lock).
+                balance_locks_[acct].unlock();
+                ++it;
+                continue;
             }
         }
     } 
@@ -2301,11 +2294,13 @@ void PaxosNode::ExecuteRepeatedTwoPCEntry(paxos::CommitEntry entry) {
     int from = std::stoi((entry.m().from_account()));
     int to = std::stoi(entry.m().to_account());
 
-    // Record the COMMITTED 2PC outcome onto the log entry (once) so it ships in
-    // NEW-VIEW -> a recovering node learns commit-vs-abort and its revert loops keep
-    // committed catch-up WAL instead of corrupting it (Mode B). Only commits recorded;
-    // aborts are handled by the default revert.
-    if (two_pc_status == "C_COORD" || two_pc_status == "C") {
+    // Record the FINAL 2PC outcome (commit or abort) onto the log entry, once, so it
+    // ships in NEW-VIEW -> a recovering node learns commit-vs-abort and its revert
+    // loops can KEEP committed catch-up WAL (Mode B) and correctly UNDO aborted ones
+    // (the q8 ==9 acct-3 off-by-one, where node 2 replayed an aborted debit but never
+    // received the A_COORD to undo it).
+    if (two_pc_status == "C_COORD" || two_pc_status == "C" ||
+        two_pc_status == "A_COORD" || two_pc_status == "A_PART_COMMIT") {
         std::lock_guard<std::mutex> lock(log_mutex_);
         auto ait = accept_log_.find(seqnum);
         if (ait != accept_log_.end() && ait->second.phase2_result().empty()) {
