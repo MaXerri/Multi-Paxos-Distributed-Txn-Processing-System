@@ -219,7 +219,7 @@ private:
 
     // Parameters
     std::chrono::milliseconds base_timeout_{4000}; //3000
-    std::chrono::milliseconds jitter_{200}; 
+    std::chrono::milliseconds jitter_{1000}; 
 
     // Cooldown timer to prevent rapid successive Prepare requests
     std::chrono::steady_clock::time_point last_prepare_received_;

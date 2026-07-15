@@ -366,8 +366,11 @@ NewViewClientCallData::NewViewClientCallData(std::shared_ptr<paxos::Paxos::Stub>
     LOG << "[DEBUG] NewViewClientCallData constructed for node "
               << node_->GetNodeId() << std::endl;
     response_reader_ = stub_->AsyncNewView(&context_, request_, cq_);
-    response_reader_->Finish(&reply_, &status_, this);
+    // Log BEFORE Finish(): after Finish() publishes `this` as the CQ tag, a polling
+    // thread may `delete this` before the next line runs -> touching node_ here is a
+    // use-after-free (same defect as AsyncCall). Finish() must be the last statement.
     LOG << "[DEBUG] finish called for newview RPC sent by " << node_->GetNodeId() << std::endl;
+    response_reader_->Finish(&reply_, &status_, this);
 }
 
 void NewViewClientCallData::OnComplete(bool ok) {
@@ -609,12 +612,16 @@ AsyncCall::AsyncCall(std::shared_ptr<paxos::Paxos::Stub> stub,
 {
     // Start the async RPC
     response_reader = stub_->AsyncSendClientRequest(&context, request_, cq_);
-    response_reader->Finish(&reply, &status, this); // 'this' used as tag for completion queue
 
-    // LOG HERE: confirm RPC is queued
+    // LOG BEFORE Finish(): once Finish() publishes `this` as the CQ tag, a polling
+    // thread can dequeue it and `delete this` immediately -- so touching request_ (or
+    // any member) after Finish() is a use-after-free. This raced under the retry storm
+    // to a dead leader and segfaulted the client (~1/300). Log while still exclusively owned.
     LOG << "[AsyncCall] Node sending RPC to target: "
               << request_.to_account()  // or some unique identifier
               << ", timestamp: " << request_.timestamp() << std::endl;
+
+    response_reader->Finish(&reply, &status, this); // 'this' used as tag for completion queue -- must be LAST
 }
 
 void AsyncCall::OnComplete(bool ok) {
