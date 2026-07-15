@@ -63,6 +63,7 @@ message AcceptedEntry {
     string two_pc_status = 5;
     ClientRequest m = 6;
     int32 new_leader = 7;
+    string phase2_result = 8; // final 2PC outcome (C_COORD/C/A_COORD/A_PART_COMMIT), ships in NEW-VIEW
 }
 
 message CommitEntry {
@@ -71,6 +72,7 @@ message CommitEntry {
     ClientRequest request = 3;
     string two_pc_status = 4;
     ClientRequest m = 5;
+    string phase2_result = 6; // final 2PC outcome, mirrors AcceptedEntry.phase2_result
 }
 
 // For generic ACKs (accept/commit responses)
