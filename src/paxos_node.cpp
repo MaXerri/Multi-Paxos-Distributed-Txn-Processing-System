@@ -663,6 +663,22 @@ void PaxosNode::MergeAcceptLogsFromPromises() {
     received_promise_logs_.clear();
     LOG << "Node " << node_id_ << " updated last_seqnum_ to " << last_seqnum_ << std::endl;
 
+    // Seed the dedup set from the inherited log: pending_or_completed_ts_ is only filled on the
+    // propose path, so a new leader that inherited a command (never proposed it) re-proposes it
+    // under a fresh seqnum on client retry -- the double-commit. Skip NO-OPs, and skip in-flight
+    // 2PCs (COORD/P, no phase2_result) since those are completed by re-driving the retry (deduping
+    // them would block completion -- the q8 regression).
+    {
+        std::lock_guard<std::mutex> plock(pending_mutex_);
+        for (const auto& [seq, entry] : accept_log_) {
+            const auto& req = entry.request();
+            if (req.client_id() == "NO-OP") continue;
+            const std::string& p1 = entry.two_pc_status();
+            if ((p1 == "COORD" || p1 == "P") && entry.phase2_result().empty()) continue; // in-flight 2PC
+            pending_or_completed_ts_.insert(req.timestamp());
+        }
+    }
+
 }
 
 void PaxosNode::FillMissingNoOps() {
