@@ -1099,9 +1099,10 @@ bool PaxosNode::ExecuteTransaction(const paxos::ClientRequest& request, int seqn
         {
             std::lock_guard<std::mutex> lock(wal_mutex_);
             wal_[seqnum] = {accounts_[to], accounts_[to] + amt};
+            accounts_[to] += amt;
         }
         
-        accounts_[to] += amt;
+        
         //UpdateBalance(to, amt, false);
         modified_accounts_.insert(to);
     }
@@ -1110,8 +1111,10 @@ bool PaxosNode::ExecuteTransaction(const paxos::ClientRequest& request, int seqn
         {
             std::lock_guard<std::mutex> lock(wal_mutex_);
             wal_[seqnum] = {accounts_[from], accounts_[from] - amt};
+
+            accounts_[from] -= amt;
         }
-        accounts_[from] -= amt;
+        
         //UpdateBalance(from, amt, true);
         modified_accounts_.insert(from);
         LOG << "Node " << node_id_ << ": executed 2PC COORD transaction, seqnum:" << seqnum
