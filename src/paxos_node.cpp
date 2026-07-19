@@ -639,15 +639,52 @@ void PaxosNode::MergeAcceptLogsFromPromises() {
     int max_seqnum = accept_log_.empty() ? 0 : accept_log_.rbegin()->first;
 
 
+    // A 2PC entry is "decided" once its outcome is known -- phase2_result set, or a phase-2
+    // two_pc_status. A decided entry must never be replaced by a phase-1 (COORD/P) copy, even a
+    // higher-ballot one: the C_COORD phase-2 is a value chosen at its ballot, so regressing it to
+    // COORD un-decides a committed txn and its balance change is later dropped on demotion (the
+    // run191 divergence -- node 2 reads 10 vs 9). Decidedness therefore dominates ballot here.
+    auto is_decided = [](const paxos::AcceptedEntry& e) {
+        const std::string& s = e.two_pc_status();
+        return !e.phase2_result().empty() ||
+               s == "C_COORD" || s == "C" || s == "A_COORD" || s == "A_PART_COMMIT";
+    };
+
     for (const auto& [node_id, log_entries] : received_promise_logs_) {
         for (const auto& accepted : log_entries) {
             int seq = accepted.seqnum();
             auto it = accept_log_.find(seq);
-            if (it == accept_log_.end() ||
-                accepted.ballot().counter() > it->second.ballot().counter() ||
-                (accepted.ballot().counter() == it->second.ballot().counter() &&
-                 accepted.ballot().node_id() > it->second.ballot().node_id())) {
+
+            bool higher_ballot =
+                (it != accept_log_.end()) &&
+                (accepted.ballot().counter() > it->second.ballot().counter() ||
+                 (accepted.ballot().counter() == it->second.ballot().counter() &&
+                  accepted.ballot().node_id() > it->second.ballot().node_id()));
+            bool cur_decided = (it != accept_log_.end()) && is_decided(it->second);
+            bool inc_decided = is_decided(accepted);
+
+            if (it == accept_log_.end()) {
                 accept_log_[seq] = accepted;
+            } else if (inc_decided && !cur_decided) {
+                accept_log_[seq] = accepted;        // decided outcome wins over phase-1, any ballot
+            } else if (cur_decided && !inc_decided) {
+                // keep the decided entry -- do NOT let a phase-1 copy regress it
+            } else if (higher_ballot) {
+                accept_log_[seq] = accepted;        // same decidedness -> higher ballot wins
+            }
+
+            // Carry a known outcome onto the winner even if the ballot-winner lacked it, and
+            // mirror a phase-2 two_pc_status into phase2_result (the demotion reconcile reads
+            // phase2_result, not two_pc_status).
+            auto& winner = accept_log_[seq];
+            if (winner.phase2_result().empty()) {
+                if (!accepted.phase2_result().empty()) {
+                    winner.set_phase2_result(accepted.phase2_result());
+                } else {
+                    const std::string& ws = winner.two_pc_status();
+                    if (ws == "C_COORD" || ws == "C" || ws == "A_COORD" || ws == "A_PART_COMMIT")
+                        winner.set_phase2_result(ws);
+                }
             }
 
             // Track the highest sequence number seen
@@ -673,6 +710,16 @@ void PaxosNode::MergeAcceptLogsFromPromises() {
         for (const auto& [seq, entry] : accept_log_) {
             const auto& req = entry.request();
             if (req.client_id() == "NO-OP") continue;
+
+            // Rebuild the ts->seqnum map for inherited commands. Like pending_or_completed_ts_,
+            // digest_to_seqnum_ is otherwise only populated on the propose path (line ~454), so a
+            // leader that inherited an in-flight 2PC via merge has no ts->seqnum entry. Then
+            // HandlePreparedAndAborted's `executed_entries_.find(digest_to_seqnum_[ts])` looks up 0,
+            // misses, and drops the participant's PREPARED -> the cross-shard 2PC hangs after a
+            // coordinator leader change. Seeding it lets the new leader recognize phase-1 as done
+            // and drive phase-2.
+            digest_to_seqnum_[req.timestamp()] = seq;
+
             const std::string& p1 = entry.two_pc_status();
             if ((p1 == "COORD" || p1 == "P") && entry.phase2_result().empty()) continue; // in-flight 2PC
             pending_or_completed_ts_.insert(req.timestamp());
@@ -1691,22 +1738,12 @@ void PaxosNode::OnElectionComplete() {
 
     }
 
-    if (leader_id_ != -1 )  { // otherwise forwarding blindly - TODO: maybe add condition to prevent 1 broadcast by client before handling
-
-        {
-            std::lock_guard<std::mutex> lock(queued_mutex_);
-            queued.swap(queued_client_requests_);
-        }
-
-        LOG << "Node " << node_id_ << " election complete, processing "
-                << queued.size() << " queued client requests." << std::endl;
-        for (auto& req : queued) {
-            ProcessClientRequest(req.request, req.call_data);
-        }
-    }
-    else {
-        LOG << "Node " << node_id_ << " election complete, but leader is Node 1, not processing queued requests since it does know who leader is" << std::endl;
-    }
+    // Reconcile the INHERITED WAL first, BEFORE processing queued client requests. The reconcile
+    // reverts in-flight coordinator debits; if it runs after the queued loop it also reverts the
+    // fresh in-flight entries that loop just created (the queued requests execute new COORD txns),
+    // which the later C_COORD commit does not re-apply -> a lost debit (the run602 divergence,
+    // node 1 read 10 vs 9). At this point accept_log_ is already the merged log, so phase2_result /
+    // request lookups are valid, and inherited WAL is all there is to reconcile here.
     {
         std::lock_guard<std::mutex> lock(wal_mutex_);
         for (auto it = wal_.begin(); it != wal_.end(); ) {
@@ -1747,6 +1784,23 @@ void PaxosNode::OnElectionComplete() {
             }
             it = wal_.erase(it);
         }
+    }
+
+    if (leader_id_ != -1 )  { // otherwise forwarding blindly - TODO: maybe add condition to prevent 1 broadcast by client before handling
+
+        {
+            std::lock_guard<std::mutex> lock(queued_mutex_);
+            queued.swap(queued_client_requests_);
+        }
+
+        LOG << "Node " << node_id_ << " election complete, processing "
+                << queued.size() << " queued client requests." << std::endl;
+        for (auto& req : queued) {
+            ProcessClientRequest(req.request, req.call_data);
+        }
+    }
+    else {
+        LOG << "Node " << node_id_ << " election complete, but leader is Node 1, not processing queued requests since it does know who leader is" << std::endl;
     }
 
 }
