@@ -55,6 +55,12 @@ def run_scenario(
         timeout=timeout,
         cwd=os.path.join(PROJECT_ROOT, "build"),
     )
+    # Optional debug capture: when PAXOS_LOGFILE is set, mirror the harness's
+    # parent stdout (which includes the client-side logs, e.g. remaining_transactions
+    # accounting) to a file. No effect on normal runs.
+    _lf = os.environ.get("PAXOS_LOGFILE")
+    if _lf:
+        child.logfile = open(_lf, "w")
     return child
 
 
