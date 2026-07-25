@@ -86,6 +86,10 @@ class DBEntry;
 struct DBEntryDefaultTypeInternal;
 extern DBEntryDefaultTypeInternal _DBEntry_default_instance_;
 extern const ::google::protobuf::internal::ClassDataFull DBEntry_class_data_;
+class HeartbeatRequest;
+struct HeartbeatRequestDefaultTypeInternal;
+extern HeartbeatRequestDefaultTypeInternal _HeartbeatRequest_default_instance_;
+extern const ::google::protobuf::internal::ClassDataFull HeartbeatRequest_class_data_;
 class InfoRequest;
 struct InfoRequestDefaultTypeInternal;
 extern InfoRequestDefaultTypeInternal _InfoRequest_default_instance_;
@@ -194,7 +198,7 @@ class TransactionAck final : public ::google::protobuf::Message
     return *reinterpret_cast<const TransactionAck*>(
         &_TransactionAck_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 9;
+  static constexpr int kIndexInFileMessages = 10;
   friend void swap(TransactionAck& a, TransactionAck& b) { a.Swap(&b); }
   inline void Swap(TransactionAck* PROTOBUF_NONNULL other) {
     if (other == this) return;
@@ -385,7 +389,7 @@ class ShardMapEntry final : public ::google::protobuf::Message
     return *reinterpret_cast<const ShardMapEntry*>(
         &_ShardMapEntry_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 16;
+  static constexpr int kIndexInFileMessages = 17;
   friend void swap(ShardMapEntry& a, ShardMapEntry& b) { a.Swap(&b); }
   inline void Swap(ShardMapEntry* PROTOBUF_NONNULL other) {
     if (other == this) return;
@@ -588,7 +592,7 @@ class MoveOnRequest final : public ::google::protobuf::Message
     return *reinterpret_cast<const MoveOnRequest*>(
         &_MoveOnRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 15;
+  static constexpr int kIndexInFileMessages = 16;
   friend void swap(MoveOnRequest& a, MoveOnRequest& b) { a.Swap(&b); }
   inline void Swap(MoveOnRequest* PROTOBUF_NONNULL other) {
     if (other == this) return;
@@ -784,7 +788,7 @@ class InfoRequest final : public ::google::protobuf::Message
     return *reinterpret_cast<const InfoRequest*>(
         &_InfoRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 13;
+  static constexpr int kIndexInFileMessages = 14;
   friend void swap(InfoRequest& a, InfoRequest& b) { a.Swap(&b); }
   inline void Swap(InfoRequest* PROTOBUF_NONNULL other) {
     if (other == this) return;
@@ -1023,7 +1027,7 @@ class DBEntry final : public ::google::protobuf::Message
     return *reinterpret_cast<const DBEntry*>(
         &_DBEntry_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 11;
+  static constexpr int kIndexInFileMessages = 12;
   friend void swap(DBEntry& a, DBEntry& b) { a.Swap(&b); }
   inline void Swap(DBEntry* PROTOBUF_NONNULL other) {
     if (other == this) return;
@@ -1729,7 +1733,7 @@ class TwoPCMsg final : public ::google::protobuf::Message
     return *reinterpret_cast<const TwoPCMsg*>(
         &_TwoPCMsg_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 14;
+  static constexpr int kIndexInFileMessages = 15;
   friend void swap(TwoPCMsg& a, TwoPCMsg& b) { a.Swap(&b); }
   inline void Swap(TwoPCMsg* PROTOBUF_NONNULL other) {
     if (other == this) return;
@@ -1988,7 +1992,7 @@ class ShardMap final : public ::google::protobuf::Message
     return *reinterpret_cast<const ShardMap*>(
         &_ShardMap_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 17;
+  static constexpr int kIndexInFileMessages = 18;
   friend void swap(ShardMap& a, ShardMap& b) { a.Swap(&b); }
   inline void Swap(ShardMap* PROTOBUF_NONNULL other) {
     if (other == this) return;
@@ -2338,6 +2342,214 @@ class PrepareRequest final : public ::google::protobuf::Message
 extern const ::google::protobuf::internal::ClassDataFull PrepareRequest_class_data_;
 // -------------------------------------------------------------------
 
+class HeartbeatRequest final : public ::google::protobuf::Message
+/* @@protoc_insertion_point(class_definition:paxos.HeartbeatRequest) */ {
+ public:
+  inline HeartbeatRequest() : HeartbeatRequest(nullptr) {}
+  ~HeartbeatRequest() PROTOBUF_FINAL;
+
+#if defined(PROTOBUF_CUSTOM_VTABLE)
+  void operator delete(HeartbeatRequest* PROTOBUF_NONNULL msg, ::std::destroying_delete_t) {
+    SharedDtor(*msg);
+    ::google::protobuf::internal::SizedDelete(msg, sizeof(HeartbeatRequest));
+  }
+#endif
+
+  template <typename = void>
+  explicit PROTOBUF_CONSTEXPR HeartbeatRequest(::google::protobuf::internal::ConstantInitialized);
+
+  inline HeartbeatRequest(const HeartbeatRequest& from) : HeartbeatRequest(nullptr, from) {}
+  inline HeartbeatRequest(HeartbeatRequest&& from) noexcept
+      : HeartbeatRequest(nullptr, ::std::move(from)) {}
+  inline HeartbeatRequest& operator=(const HeartbeatRequest& from) {
+    CopyFrom(from);
+    return *this;
+  }
+  inline HeartbeatRequest& operator=(HeartbeatRequest&& from) noexcept {
+    if (this == &from) return *this;
+    if (::google::protobuf::internal::CanMoveWithInternalSwap(GetArena(), from.GetArena())) {
+      InternalSwap(&from);
+    } else {
+      CopyFrom(from);
+    }
+    return *this;
+  }
+
+  inline const ::google::protobuf::UnknownFieldSet& unknown_fields() const
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.unknown_fields<::google::protobuf::UnknownFieldSet>(::google::protobuf::UnknownFieldSet::default_instance);
+  }
+  inline ::google::protobuf::UnknownFieldSet* PROTOBUF_NONNULL mutable_unknown_fields()
+      ABSL_ATTRIBUTE_LIFETIME_BOUND {
+    return _internal_metadata_.mutable_unknown_fields<::google::protobuf::UnknownFieldSet>();
+  }
+
+  static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL descriptor() {
+    return GetDescriptor();
+  }
+  static const ::google::protobuf::Descriptor* PROTOBUF_NONNULL GetDescriptor() {
+    return default_instance().GetMetadata().descriptor;
+  }
+  static const ::google::protobuf::Reflection* PROTOBUF_NONNULL GetReflection() {
+    return default_instance().GetMetadata().reflection;
+  }
+  static const HeartbeatRequest& default_instance() {
+    return *reinterpret_cast<const HeartbeatRequest*>(
+        &_HeartbeatRequest_default_instance_);
+  }
+  static constexpr int kIndexInFileMessages = 9;
+  friend void swap(HeartbeatRequest& a, HeartbeatRequest& b) { a.Swap(&b); }
+  inline void Swap(HeartbeatRequest* PROTOBUF_NONNULL other) {
+    if (other == this) return;
+    if (::google::protobuf::internal::CanUseInternalSwap(GetArena(), other->GetArena())) {
+      InternalSwap(other);
+    } else {
+      ::google::protobuf::internal::GenericSwap(this, other);
+    }
+  }
+  void UnsafeArenaSwap(HeartbeatRequest* PROTOBUF_NONNULL other) {
+    if (other == this) return;
+    ABSL_DCHECK(GetArena() == other->GetArena());
+    InternalSwap(other);
+  }
+
+  // implements Message ----------------------------------------------
+
+  HeartbeatRequest* PROTOBUF_NONNULL New(::google::protobuf::Arena* PROTOBUF_NULLABLE arena = nullptr) const {
+    return ::google::protobuf::Message::DefaultConstruct<HeartbeatRequest>(arena);
+  }
+  using ::google::protobuf::Message::CopyFrom;
+  void CopyFrom(const HeartbeatRequest& from);
+  using ::google::protobuf::Message::MergeFrom;
+  void MergeFrom(const HeartbeatRequest& from) { HeartbeatRequest::MergeImpl(*this, from); }
+
+  private:
+  static void MergeImpl(::google::protobuf::MessageLite& to_msg,
+                        const ::google::protobuf::MessageLite& from_msg);
+
+  public:
+  bool IsInitialized() const {
+    return true;
+  }
+  ABSL_ATTRIBUTE_REINITIALIZES void Clear() PROTOBUF_FINAL;
+  #if defined(PROTOBUF_CUSTOM_VTABLE)
+  private:
+  static ::size_t ByteSizeLong(const ::google::protobuf::MessageLite& msg);
+  static ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      const ::google::protobuf::MessageLite& msg, ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream);
+
+  public:
+  ::size_t ByteSizeLong() const { return ByteSizeLong(*this); }
+  ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const {
+    return _InternalSerialize(*this, target, stream);
+  }
+  #else   // PROTOBUF_CUSTOM_VTABLE
+  ::size_t ByteSizeLong() const final;
+  ::uint8_t* PROTOBUF_NONNULL _InternalSerialize(
+      ::uint8_t* PROTOBUF_NONNULL target,
+      ::google::protobuf::io::EpsCopyOutputStream* PROTOBUF_NONNULL stream) const final;
+  #endif  // PROTOBUF_CUSTOM_VTABLE
+  int GetCachedSize() const { return _impl_._cached_size_.Get(); }
+
+  private:
+  void SharedCtor(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static void SharedDtor(MessageLite& self);
+  void InternalSwap(HeartbeatRequest* PROTOBUF_NONNULL other);
+ private:
+  template <typename T>
+  friend ::absl::string_view(::google::protobuf::internal::GetAnyMessageName)();
+  static ::absl::string_view FullMessageName() { return "paxos.HeartbeatRequest"; }
+
+ protected:
+  explicit HeartbeatRequest(::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  HeartbeatRequest(::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const HeartbeatRequest& from);
+  HeartbeatRequest(
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, HeartbeatRequest&& from) noexcept
+      : HeartbeatRequest(arena) {
+    *this = ::std::move(from);
+  }
+  const ::google::protobuf::internal::ClassData* PROTOBUF_NONNULL GetClassData() const PROTOBUF_FINAL;
+  static void* PROTOBUF_NONNULL PlacementNew_(
+      const void* PROTOBUF_NONNULL, void* PROTOBUF_NONNULL mem,
+      ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+  static constexpr auto InternalNewImpl_();
+
+ public:
+  static constexpr auto InternalGenerateClassData_();
+
+  ::google::protobuf::Metadata GetMetadata() const;
+  // nested types ----------------------------------------------------
+
+  // accessors -------------------------------------------------------
+  enum : int {
+    kBallotFieldNumber = 1,
+    kNodeIdFieldNumber = 2,
+  };
+  // .paxos.Ballot ballot = 1;
+  bool has_ballot() const;
+  void clear_ballot() ;
+  const ::paxos::Ballot& ballot() const;
+  [[nodiscard]] ::paxos::Ballot* PROTOBUF_NULLABLE release_ballot();
+  ::paxos::Ballot* PROTOBUF_NONNULL mutable_ballot();
+  void set_allocated_ballot(::paxos::Ballot* PROTOBUF_NULLABLE value);
+  void unsafe_arena_set_allocated_ballot(::paxos::Ballot* PROTOBUF_NULLABLE value);
+  ::paxos::Ballot* PROTOBUF_NULLABLE unsafe_arena_release_ballot();
+
+  private:
+  const ::paxos::Ballot& _internal_ballot() const;
+  ::paxos::Ballot* PROTOBUF_NONNULL _internal_mutable_ballot();
+
+  public:
+  // int32 node_id = 2;
+  void clear_node_id() ;
+  ::int32_t node_id() const;
+  void set_node_id(::int32_t value);
+
+  private:
+  ::int32_t _internal_node_id() const;
+  void _internal_set_node_id(::int32_t value);
+
+  public:
+  // @@protoc_insertion_point(class_scope:paxos.HeartbeatRequest)
+ private:
+  class _Internal;
+  friend class ::google::protobuf::internal::TcParser;
+  static const ::google::protobuf::internal::TcParseTable<1, 2,
+                                   1, 0,
+                                   2>
+      _table_;
+
+  friend class ::google::protobuf::MessageLite;
+  friend class ::google::protobuf::Arena;
+  template <typename T>
+  friend class ::google::protobuf::Arena::InternalHelper;
+  using InternalArenaConstructable_ = void;
+  using DestructorSkippable_ = void;
+  struct Impl_ {
+    inline explicit constexpr Impl_(::google::protobuf::internal::ConstantInitialized) noexcept;
+    inline explicit Impl_(
+        ::google::protobuf::internal::InternalVisibility visibility,
+        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena);
+    inline explicit Impl_(
+        ::google::protobuf::internal::InternalVisibility visibility,
+        ::google::protobuf::Arena* PROTOBUF_NULLABLE arena, const Impl_& from,
+        const HeartbeatRequest& from_msg);
+    ::google::protobuf::internal::HasBits<1> _has_bits_;
+    ::google::protobuf::internal::CachedSize _cached_size_;
+    ::paxos::Ballot* PROTOBUF_NULLABLE ballot_;
+    ::int32_t node_id_;
+    PROTOBUF_TSAN_DECLARE_MEMBER
+  };
+  union { Impl_ _impl_; };
+  friend struct ::TableStruct_paxos_2eproto;
+};
+
+extern const ::google::protobuf::internal::ClassDataFull HeartbeatRequest_class_data_;
+// -------------------------------------------------------------------
+
 class CommitEntry final : public ::google::protobuf::Message
 /* @@protoc_insertion_point(class_definition:paxos.CommitEntry) */ {
  public:
@@ -2482,6 +2694,7 @@ class CommitEntry final : public ::google::protobuf::Message
   // accessors -------------------------------------------------------
   enum : int {
     kTwoPcStatusFieldNumber = 4,
+    kPhase2ResultFieldNumber = 6,
     kBallotFieldNumber = 1,
     kRequestFieldNumber = 3,
     kMFieldNumber = 5,
@@ -2500,6 +2713,21 @@ class CommitEntry final : public ::google::protobuf::Message
   const ::std::string& _internal_two_pc_status() const;
   PROTOBUF_ALWAYS_INLINE void _internal_set_two_pc_status(const ::std::string& value);
   ::std::string* PROTOBUF_NONNULL _internal_mutable_two_pc_status();
+
+  public:
+  // string phase2_result = 6;
+  void clear_phase2_result() ;
+  const ::std::string& phase2_result() const;
+  template <typename Arg_ = const ::std::string&, typename... Args_>
+  void set_phase2_result(Arg_&& arg, Args_... args);
+  ::std::string* PROTOBUF_NONNULL mutable_phase2_result();
+  [[nodiscard]] ::std::string* PROTOBUF_NULLABLE release_phase2_result();
+  void set_allocated_phase2_result(::std::string* PROTOBUF_NULLABLE value);
+
+  private:
+  const ::std::string& _internal_phase2_result() const;
+  PROTOBUF_ALWAYS_INLINE void _internal_set_phase2_result(const ::std::string& value);
+  ::std::string* PROTOBUF_NONNULL _internal_mutable_phase2_result();
 
   public:
   // .paxos.Ballot ballot = 1;
@@ -2561,8 +2789,8 @@ class CommitEntry final : public ::google::protobuf::Message
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 5,
-                                   3, 39,
+  static const ::google::protobuf::internal::TcParseTable<3, 6,
+                                   3, 52,
                                    2>
       _table_;
 
@@ -2584,6 +2812,7 @@ class CommitEntry final : public ::google::protobuf::Message
     ::google::protobuf::internal::HasBits<1> _has_bits_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::google::protobuf::internal::ArenaStringPtr two_pc_status_;
+    ::google::protobuf::internal::ArenaStringPtr phase2_result_;
     ::paxos::Ballot* PROTOBUF_NULLABLE ballot_;
     ::paxos::ClientRequest* PROTOBUF_NULLABLE request_;
     ::paxos::ClientRequest* PROTOBUF_NULLABLE m_;
@@ -3263,6 +3492,7 @@ class AcceptedEntry final : public ::google::protobuf::Message
   // accessors -------------------------------------------------------
   enum : int {
     kTwoPcStatusFieldNumber = 5,
+    kPhase2ResultFieldNumber = 8,
     kBallotFieldNumber = 1,
     kRequestFieldNumber = 3,
     kMFieldNumber = 6,
@@ -3283,6 +3513,21 @@ class AcceptedEntry final : public ::google::protobuf::Message
   const ::std::string& _internal_two_pc_status() const;
   PROTOBUF_ALWAYS_INLINE void _internal_set_two_pc_status(const ::std::string& value);
   ::std::string* PROTOBUF_NONNULL _internal_mutable_two_pc_status();
+
+  public:
+  // string phase2_result = 8;
+  void clear_phase2_result() ;
+  const ::std::string& phase2_result() const;
+  template <typename Arg_ = const ::std::string&, typename... Args_>
+  void set_phase2_result(Arg_&& arg, Args_... args);
+  ::std::string* PROTOBUF_NONNULL mutable_phase2_result();
+  [[nodiscard]] ::std::string* PROTOBUF_NULLABLE release_phase2_result();
+  void set_allocated_phase2_result(::std::string* PROTOBUF_NULLABLE value);
+
+  private:
+  const ::std::string& _internal_phase2_result() const;
+  PROTOBUF_ALWAYS_INLINE void _internal_set_phase2_result(const ::std::string& value);
+  ::std::string* PROTOBUF_NONNULL _internal_mutable_phase2_result();
 
   public:
   // .paxos.Ballot ballot = 1;
@@ -3364,8 +3609,8 @@ class AcceptedEntry final : public ::google::protobuf::Message
  private:
   class _Internal;
   friend class ::google::protobuf::internal::TcParser;
-  static const ::google::protobuf::internal::TcParseTable<3, 7,
-                                   3, 41,
+  static const ::google::protobuf::internal::TcParseTable<3, 8,
+                                   3, 62,
                                    2>
       _table_;
 
@@ -3387,6 +3632,7 @@ class AcceptedEntry final : public ::google::protobuf::Message
     ::google::protobuf::internal::HasBits<1> _has_bits_;
     ::google::protobuf::internal::CachedSize _cached_size_;
     ::google::protobuf::internal::ArenaStringPtr two_pc_status_;
+    ::google::protobuf::internal::ArenaStringPtr phase2_result_;
     ::paxos::Ballot* PROTOBUF_NULLABLE ballot_;
     ::paxos::ClientRequest* PROTOBUF_NULLABLE request_;
     ::paxos::ClientRequest* PROTOBUF_NULLABLE m_;
@@ -3911,7 +4157,7 @@ class AliveUpdateRequest final : public ::google::protobuf::Message
     return *reinterpret_cast<const AliveUpdateRequest*>(
         &_AliveUpdateRequest_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 10;
+  static constexpr int kIndexInFileMessages = 11;
   friend void swap(AliveUpdateRequest& a, AliveUpdateRequest& b) { a.Swap(&b); }
   inline void Swap(AliveUpdateRequest* PROTOBUF_NONNULL other) {
     if (other == this) return;
@@ -4179,7 +4425,7 @@ class NodeInfo final : public ::google::protobuf::Message
     return *reinterpret_cast<const NodeInfo*>(
         &_NodeInfo_default_instance_);
   }
-  static constexpr int kIndexInFileMessages = 12;
+  static constexpr int kIndexInFileMessages = 13;
   friend void swap(NodeInfo& a, NodeInfo& b) { a.Swap(&b); }
   inline void Swap(NodeInfo* PROTOBUF_NONNULL other) {
     if (other == this) return;
@@ -5545,14 +5791,14 @@ NewViewRequest::_internal_mutable_accept_log() {
 
 // .paxos.Ballot ballot = 1;
 inline bool AcceptedEntry::has_ballot() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000002U) != 0;
+  bool value = (_impl_._has_bits_[0] & 0x00000004U) != 0;
   PROTOBUF_ASSUME(!value || _impl_.ballot_ != nullptr);
   return value;
 }
 inline void AcceptedEntry::clear_ballot() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (_impl_.ballot_ != nullptr) _impl_.ballot_->Clear();
-  _impl_._has_bits_[0] &= ~0x00000002U;
+  _impl_._has_bits_[0] &= ~0x00000004U;
 }
 inline const ::paxos::Ballot& AcceptedEntry::_internal_ballot() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -5571,16 +5817,16 @@ inline void AcceptedEntry::unsafe_arena_set_allocated_ballot(
   }
   _impl_.ballot_ = reinterpret_cast<::paxos::Ballot*>(value);
   if (value != nullptr) {
-    _impl_._has_bits_[0] |= 0x00000002U;
+    _impl_._has_bits_[0] |= 0x00000004U;
   } else {
-    _impl_._has_bits_[0] &= ~0x00000002U;
+    _impl_._has_bits_[0] &= ~0x00000004U;
   }
   // @@protoc_insertion_point(field_unsafe_arena_set_allocated:paxos.AcceptedEntry.ballot)
 }
 inline ::paxos::Ballot* PROTOBUF_NULLABLE AcceptedEntry::release_ballot() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
 
-  _impl_._has_bits_[0] &= ~0x00000002U;
+  _impl_._has_bits_[0] &= ~0x00000004U;
   ::paxos::Ballot* released = _impl_.ballot_;
   _impl_.ballot_ = nullptr;
   if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
@@ -5600,7 +5846,7 @@ inline ::paxos::Ballot* PROTOBUF_NULLABLE AcceptedEntry::unsafe_arena_release_ba
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:paxos.AcceptedEntry.ballot)
 
-  _impl_._has_bits_[0] &= ~0x00000002U;
+  _impl_._has_bits_[0] &= ~0x00000004U;
   ::paxos::Ballot* temp = _impl_.ballot_;
   _impl_.ballot_ = nullptr;
   return temp;
@@ -5615,7 +5861,7 @@ inline ::paxos::Ballot* PROTOBUF_NONNULL AcceptedEntry::_internal_mutable_ballot
 }
 inline ::paxos::Ballot* PROTOBUF_NONNULL AcceptedEntry::mutable_ballot()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  _impl_._has_bits_[0] |= 0x00000002U;
+  _impl_._has_bits_[0] |= 0x00000004U;
   ::paxos::Ballot* _msg = _internal_mutable_ballot();
   // @@protoc_insertion_point(field_mutable:paxos.AcceptedEntry.ballot)
   return _msg;
@@ -5632,9 +5878,9 @@ inline void AcceptedEntry::set_allocated_ballot(::paxos::Ballot* PROTOBUF_NULLAB
     if (message_arena != submessage_arena) {
       value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
     }
-    _impl_._has_bits_[0] |= 0x00000002U;
+    _impl_._has_bits_[0] |= 0x00000004U;
   } else {
-    _impl_._has_bits_[0] &= ~0x00000002U;
+    _impl_._has_bits_[0] &= ~0x00000004U;
   }
 
   _impl_.ballot_ = reinterpret_cast<::paxos::Ballot*>(value);
@@ -5645,7 +5891,7 @@ inline void AcceptedEntry::set_allocated_ballot(::paxos::Ballot* PROTOBUF_NULLAB
 inline void AcceptedEntry::clear_seqnum() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.seqnum_ = 0;
-  _impl_._has_bits_[0] &= ~0x00000010U;
+  _impl_._has_bits_[0] &= ~0x00000020U;
 }
 inline ::int32_t AcceptedEntry::seqnum() const {
   // @@protoc_insertion_point(field_get:paxos.AcceptedEntry.seqnum)
@@ -5653,7 +5899,7 @@ inline ::int32_t AcceptedEntry::seqnum() const {
 }
 inline void AcceptedEntry::set_seqnum(::int32_t value) {
   _internal_set_seqnum(value);
-  _impl_._has_bits_[0] |= 0x00000010U;
+  _impl_._has_bits_[0] |= 0x00000020U;
   // @@protoc_insertion_point(field_set:paxos.AcceptedEntry.seqnum)
 }
 inline ::int32_t AcceptedEntry::_internal_seqnum() const {
@@ -5667,14 +5913,14 @@ inline void AcceptedEntry::_internal_set_seqnum(::int32_t value) {
 
 // .paxos.ClientRequest request = 3;
 inline bool AcceptedEntry::has_request() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000004U) != 0;
+  bool value = (_impl_._has_bits_[0] & 0x00000008U) != 0;
   PROTOBUF_ASSUME(!value || _impl_.request_ != nullptr);
   return value;
 }
 inline void AcceptedEntry::clear_request() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (_impl_.request_ != nullptr) _impl_.request_->Clear();
-  _impl_._has_bits_[0] &= ~0x00000004U;
+  _impl_._has_bits_[0] &= ~0x00000008U;
 }
 inline const ::paxos::ClientRequest& AcceptedEntry::_internal_request() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -5693,16 +5939,16 @@ inline void AcceptedEntry::unsafe_arena_set_allocated_request(
   }
   _impl_.request_ = reinterpret_cast<::paxos::ClientRequest*>(value);
   if (value != nullptr) {
-    _impl_._has_bits_[0] |= 0x00000004U;
+    _impl_._has_bits_[0] |= 0x00000008U;
   } else {
-    _impl_._has_bits_[0] &= ~0x00000004U;
+    _impl_._has_bits_[0] &= ~0x00000008U;
   }
   // @@protoc_insertion_point(field_unsafe_arena_set_allocated:paxos.AcceptedEntry.request)
 }
 inline ::paxos::ClientRequest* PROTOBUF_NULLABLE AcceptedEntry::release_request() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
 
-  _impl_._has_bits_[0] &= ~0x00000004U;
+  _impl_._has_bits_[0] &= ~0x00000008U;
   ::paxos::ClientRequest* released = _impl_.request_;
   _impl_.request_ = nullptr;
   if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
@@ -5722,7 +5968,7 @@ inline ::paxos::ClientRequest* PROTOBUF_NULLABLE AcceptedEntry::unsafe_arena_rel
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:paxos.AcceptedEntry.request)
 
-  _impl_._has_bits_[0] &= ~0x00000004U;
+  _impl_._has_bits_[0] &= ~0x00000008U;
   ::paxos::ClientRequest* temp = _impl_.request_;
   _impl_.request_ = nullptr;
   return temp;
@@ -5737,7 +5983,7 @@ inline ::paxos::ClientRequest* PROTOBUF_NONNULL AcceptedEntry::_internal_mutable
 }
 inline ::paxos::ClientRequest* PROTOBUF_NONNULL AcceptedEntry::mutable_request()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  _impl_._has_bits_[0] |= 0x00000004U;
+  _impl_._has_bits_[0] |= 0x00000008U;
   ::paxos::ClientRequest* _msg = _internal_mutable_request();
   // @@protoc_insertion_point(field_mutable:paxos.AcceptedEntry.request)
   return _msg;
@@ -5754,9 +6000,9 @@ inline void AcceptedEntry::set_allocated_request(::paxos::ClientRequest* PROTOBU
     if (message_arena != submessage_arena) {
       value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
     }
-    _impl_._has_bits_[0] |= 0x00000004U;
+    _impl_._has_bits_[0] |= 0x00000008U;
   } else {
-    _impl_._has_bits_[0] &= ~0x00000004U;
+    _impl_._has_bits_[0] &= ~0x00000008U;
   }
 
   _impl_.request_ = reinterpret_cast<::paxos::ClientRequest*>(value);
@@ -5767,7 +6013,7 @@ inline void AcceptedEntry::set_allocated_request(::paxos::ClientRequest* PROTOBU
 inline void AcceptedEntry::clear_node_id() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.node_id_ = 0;
-  _impl_._has_bits_[0] &= ~0x00000020U;
+  _impl_._has_bits_[0] &= ~0x00000040U;
 }
 inline ::int32_t AcceptedEntry::node_id() const {
   // @@protoc_insertion_point(field_get:paxos.AcceptedEntry.node_id)
@@ -5775,7 +6021,7 @@ inline ::int32_t AcceptedEntry::node_id() const {
 }
 inline void AcceptedEntry::set_node_id(::int32_t value) {
   _internal_set_node_id(value);
-  _impl_._has_bits_[0] |= 0x00000020U;
+  _impl_._has_bits_[0] |= 0x00000040U;
   // @@protoc_insertion_point(field_set:paxos.AcceptedEntry.node_id)
 }
 inline ::int32_t AcceptedEntry::_internal_node_id() const {
@@ -5854,14 +6100,14 @@ inline void AcceptedEntry::set_allocated_two_pc_status(::std::string* PROTOBUF_N
 
 // .paxos.ClientRequest m = 6;
 inline bool AcceptedEntry::has_m() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000008U) != 0;
+  bool value = (_impl_._has_bits_[0] & 0x00000010U) != 0;
   PROTOBUF_ASSUME(!value || _impl_.m_ != nullptr);
   return value;
 }
 inline void AcceptedEntry::clear_m() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (_impl_.m_ != nullptr) _impl_.m_->Clear();
-  _impl_._has_bits_[0] &= ~0x00000008U;
+  _impl_._has_bits_[0] &= ~0x00000010U;
 }
 inline const ::paxos::ClientRequest& AcceptedEntry::_internal_m() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -5880,16 +6126,16 @@ inline void AcceptedEntry::unsafe_arena_set_allocated_m(
   }
   _impl_.m_ = reinterpret_cast<::paxos::ClientRequest*>(value);
   if (value != nullptr) {
-    _impl_._has_bits_[0] |= 0x00000008U;
+    _impl_._has_bits_[0] |= 0x00000010U;
   } else {
-    _impl_._has_bits_[0] &= ~0x00000008U;
+    _impl_._has_bits_[0] &= ~0x00000010U;
   }
   // @@protoc_insertion_point(field_unsafe_arena_set_allocated:paxos.AcceptedEntry.m)
 }
 inline ::paxos::ClientRequest* PROTOBUF_NULLABLE AcceptedEntry::release_m() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
 
-  _impl_._has_bits_[0] &= ~0x00000008U;
+  _impl_._has_bits_[0] &= ~0x00000010U;
   ::paxos::ClientRequest* released = _impl_.m_;
   _impl_.m_ = nullptr;
   if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
@@ -5909,7 +6155,7 @@ inline ::paxos::ClientRequest* PROTOBUF_NULLABLE AcceptedEntry::unsafe_arena_rel
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:paxos.AcceptedEntry.m)
 
-  _impl_._has_bits_[0] &= ~0x00000008U;
+  _impl_._has_bits_[0] &= ~0x00000010U;
   ::paxos::ClientRequest* temp = _impl_.m_;
   _impl_.m_ = nullptr;
   return temp;
@@ -5924,7 +6170,7 @@ inline ::paxos::ClientRequest* PROTOBUF_NONNULL AcceptedEntry::_internal_mutable
 }
 inline ::paxos::ClientRequest* PROTOBUF_NONNULL AcceptedEntry::mutable_m()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  _impl_._has_bits_[0] |= 0x00000008U;
+  _impl_._has_bits_[0] |= 0x00000010U;
   ::paxos::ClientRequest* _msg = _internal_mutable_m();
   // @@protoc_insertion_point(field_mutable:paxos.AcceptedEntry.m)
   return _msg;
@@ -5941,9 +6187,9 @@ inline void AcceptedEntry::set_allocated_m(::paxos::ClientRequest* PROTOBUF_NULL
     if (message_arena != submessage_arena) {
       value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
     }
-    _impl_._has_bits_[0] |= 0x00000008U;
+    _impl_._has_bits_[0] |= 0x00000010U;
   } else {
-    _impl_._has_bits_[0] &= ~0x00000008U;
+    _impl_._has_bits_[0] &= ~0x00000010U;
   }
 
   _impl_.m_ = reinterpret_cast<::paxos::ClientRequest*>(value);
@@ -5954,7 +6200,7 @@ inline void AcceptedEntry::set_allocated_m(::paxos::ClientRequest* PROTOBUF_NULL
 inline void AcceptedEntry::clear_new_leader() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.new_leader_ = 0;
-  _impl_._has_bits_[0] &= ~0x00000040U;
+  _impl_._has_bits_[0] &= ~0x00000080U;
 }
 inline ::int32_t AcceptedEntry::new_leader() const {
   // @@protoc_insertion_point(field_get:paxos.AcceptedEntry.new_leader)
@@ -5962,7 +6208,7 @@ inline ::int32_t AcceptedEntry::new_leader() const {
 }
 inline void AcceptedEntry::set_new_leader(::int32_t value) {
   _internal_set_new_leader(value);
-  _impl_._has_bits_[0] |= 0x00000040U;
+  _impl_._has_bits_[0] |= 0x00000080U;
   // @@protoc_insertion_point(field_set:paxos.AcceptedEntry.new_leader)
 }
 inline ::int32_t AcceptedEntry::_internal_new_leader() const {
@@ -5974,20 +6220,85 @@ inline void AcceptedEntry::_internal_set_new_leader(::int32_t value) {
   _impl_.new_leader_ = value;
 }
 
+// string phase2_result = 8;
+inline void AcceptedEntry::clear_phase2_result() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.phase2_result_.ClearToEmpty();
+  _impl_._has_bits_[0] &= ~0x00000002U;
+}
+inline const ::std::string& AcceptedEntry::phase2_result() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:paxos.AcceptedEntry.phase2_result)
+  return _internal_phase2_result();
+}
+template <typename Arg_, typename... Args_>
+PROTOBUF_ALWAYS_INLINE void AcceptedEntry::set_phase2_result(Arg_&& arg, Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_._has_bits_[0] |= 0x00000002U;
+  _impl_.phase2_result_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
+  // @@protoc_insertion_point(field_set:paxos.AcceptedEntry.phase2_result)
+}
+inline ::std::string* PROTOBUF_NONNULL AcceptedEntry::mutable_phase2_result()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::std::string* _s = _internal_mutable_phase2_result();
+  // @@protoc_insertion_point(field_mutable:paxos.AcceptedEntry.phase2_result)
+  return _s;
+}
+inline const ::std::string& AcceptedEntry::_internal_phase2_result() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.phase2_result_.Get();
+}
+inline void AcceptedEntry::_internal_set_phase2_result(const ::std::string& value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_._has_bits_[0] |= 0x00000002U;
+  _impl_.phase2_result_.Set(value, GetArena());
+}
+inline ::std::string* PROTOBUF_NONNULL AcceptedEntry::_internal_mutable_phase2_result() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_._has_bits_[0] |= 0x00000002U;
+  return _impl_.phase2_result_.Mutable( GetArena());
+}
+inline ::std::string* PROTOBUF_NULLABLE AcceptedEntry::release_phase2_result() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:paxos.AcceptedEntry.phase2_result)
+  if ((_impl_._has_bits_[0] & 0x00000002U) == 0) {
+    return nullptr;
+  }
+  _impl_._has_bits_[0] &= ~0x00000002U;
+  auto* released = _impl_.phase2_result_.Release();
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
+    _impl_.phase2_result_.Set("", GetArena());
+  }
+  return released;
+}
+inline void AcceptedEntry::set_allocated_phase2_result(::std::string* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (value != nullptr) {
+    _impl_._has_bits_[0] |= 0x00000002U;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000002U;
+  }
+  _impl_.phase2_result_.SetAllocated(value, GetArena());
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.phase2_result_.IsDefault()) {
+    _impl_.phase2_result_.Set("", GetArena());
+  }
+  // @@protoc_insertion_point(field_set_allocated:paxos.AcceptedEntry.phase2_result)
+}
+
 // -------------------------------------------------------------------
 
 // CommitEntry
 
 // .paxos.Ballot ballot = 1;
 inline bool CommitEntry::has_ballot() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000002U) != 0;
+  bool value = (_impl_._has_bits_[0] & 0x00000004U) != 0;
   PROTOBUF_ASSUME(!value || _impl_.ballot_ != nullptr);
   return value;
 }
 inline void CommitEntry::clear_ballot() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (_impl_.ballot_ != nullptr) _impl_.ballot_->Clear();
-  _impl_._has_bits_[0] &= ~0x00000002U;
+  _impl_._has_bits_[0] &= ~0x00000004U;
 }
 inline const ::paxos::Ballot& CommitEntry::_internal_ballot() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -6006,16 +6317,16 @@ inline void CommitEntry::unsafe_arena_set_allocated_ballot(
   }
   _impl_.ballot_ = reinterpret_cast<::paxos::Ballot*>(value);
   if (value != nullptr) {
-    _impl_._has_bits_[0] |= 0x00000002U;
+    _impl_._has_bits_[0] |= 0x00000004U;
   } else {
-    _impl_._has_bits_[0] &= ~0x00000002U;
+    _impl_._has_bits_[0] &= ~0x00000004U;
   }
   // @@protoc_insertion_point(field_unsafe_arena_set_allocated:paxos.CommitEntry.ballot)
 }
 inline ::paxos::Ballot* PROTOBUF_NULLABLE CommitEntry::release_ballot() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
 
-  _impl_._has_bits_[0] &= ~0x00000002U;
+  _impl_._has_bits_[0] &= ~0x00000004U;
   ::paxos::Ballot* released = _impl_.ballot_;
   _impl_.ballot_ = nullptr;
   if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
@@ -6035,7 +6346,7 @@ inline ::paxos::Ballot* PROTOBUF_NULLABLE CommitEntry::unsafe_arena_release_ball
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:paxos.CommitEntry.ballot)
 
-  _impl_._has_bits_[0] &= ~0x00000002U;
+  _impl_._has_bits_[0] &= ~0x00000004U;
   ::paxos::Ballot* temp = _impl_.ballot_;
   _impl_.ballot_ = nullptr;
   return temp;
@@ -6050,7 +6361,7 @@ inline ::paxos::Ballot* PROTOBUF_NONNULL CommitEntry::_internal_mutable_ballot()
 }
 inline ::paxos::Ballot* PROTOBUF_NONNULL CommitEntry::mutable_ballot()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  _impl_._has_bits_[0] |= 0x00000002U;
+  _impl_._has_bits_[0] |= 0x00000004U;
   ::paxos::Ballot* _msg = _internal_mutable_ballot();
   // @@protoc_insertion_point(field_mutable:paxos.CommitEntry.ballot)
   return _msg;
@@ -6067,9 +6378,9 @@ inline void CommitEntry::set_allocated_ballot(::paxos::Ballot* PROTOBUF_NULLABLE
     if (message_arena != submessage_arena) {
       value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
     }
-    _impl_._has_bits_[0] |= 0x00000002U;
+    _impl_._has_bits_[0] |= 0x00000004U;
   } else {
-    _impl_._has_bits_[0] &= ~0x00000002U;
+    _impl_._has_bits_[0] &= ~0x00000004U;
   }
 
   _impl_.ballot_ = reinterpret_cast<::paxos::Ballot*>(value);
@@ -6080,7 +6391,7 @@ inline void CommitEntry::set_allocated_ballot(::paxos::Ballot* PROTOBUF_NULLABLE
 inline void CommitEntry::clear_seqnum() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   _impl_.seqnum_ = 0;
-  _impl_._has_bits_[0] &= ~0x00000010U;
+  _impl_._has_bits_[0] &= ~0x00000020U;
 }
 inline ::int32_t CommitEntry::seqnum() const {
   // @@protoc_insertion_point(field_get:paxos.CommitEntry.seqnum)
@@ -6088,7 +6399,7 @@ inline ::int32_t CommitEntry::seqnum() const {
 }
 inline void CommitEntry::set_seqnum(::int32_t value) {
   _internal_set_seqnum(value);
-  _impl_._has_bits_[0] |= 0x00000010U;
+  _impl_._has_bits_[0] |= 0x00000020U;
   // @@protoc_insertion_point(field_set:paxos.CommitEntry.seqnum)
 }
 inline ::int32_t CommitEntry::_internal_seqnum() const {
@@ -6102,14 +6413,14 @@ inline void CommitEntry::_internal_set_seqnum(::int32_t value) {
 
 // .paxos.ClientRequest request = 3;
 inline bool CommitEntry::has_request() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000004U) != 0;
+  bool value = (_impl_._has_bits_[0] & 0x00000008U) != 0;
   PROTOBUF_ASSUME(!value || _impl_.request_ != nullptr);
   return value;
 }
 inline void CommitEntry::clear_request() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (_impl_.request_ != nullptr) _impl_.request_->Clear();
-  _impl_._has_bits_[0] &= ~0x00000004U;
+  _impl_._has_bits_[0] &= ~0x00000008U;
 }
 inline const ::paxos::ClientRequest& CommitEntry::_internal_request() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -6128,16 +6439,16 @@ inline void CommitEntry::unsafe_arena_set_allocated_request(
   }
   _impl_.request_ = reinterpret_cast<::paxos::ClientRequest*>(value);
   if (value != nullptr) {
-    _impl_._has_bits_[0] |= 0x00000004U;
+    _impl_._has_bits_[0] |= 0x00000008U;
   } else {
-    _impl_._has_bits_[0] &= ~0x00000004U;
+    _impl_._has_bits_[0] &= ~0x00000008U;
   }
   // @@protoc_insertion_point(field_unsafe_arena_set_allocated:paxos.CommitEntry.request)
 }
 inline ::paxos::ClientRequest* PROTOBUF_NULLABLE CommitEntry::release_request() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
 
-  _impl_._has_bits_[0] &= ~0x00000004U;
+  _impl_._has_bits_[0] &= ~0x00000008U;
   ::paxos::ClientRequest* released = _impl_.request_;
   _impl_.request_ = nullptr;
   if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
@@ -6157,7 +6468,7 @@ inline ::paxos::ClientRequest* PROTOBUF_NULLABLE CommitEntry::unsafe_arena_relea
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:paxos.CommitEntry.request)
 
-  _impl_._has_bits_[0] &= ~0x00000004U;
+  _impl_._has_bits_[0] &= ~0x00000008U;
   ::paxos::ClientRequest* temp = _impl_.request_;
   _impl_.request_ = nullptr;
   return temp;
@@ -6172,7 +6483,7 @@ inline ::paxos::ClientRequest* PROTOBUF_NONNULL CommitEntry::_internal_mutable_r
 }
 inline ::paxos::ClientRequest* PROTOBUF_NONNULL CommitEntry::mutable_request()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  _impl_._has_bits_[0] |= 0x00000004U;
+  _impl_._has_bits_[0] |= 0x00000008U;
   ::paxos::ClientRequest* _msg = _internal_mutable_request();
   // @@protoc_insertion_point(field_mutable:paxos.CommitEntry.request)
   return _msg;
@@ -6189,9 +6500,9 @@ inline void CommitEntry::set_allocated_request(::paxos::ClientRequest* PROTOBUF_
     if (message_arena != submessage_arena) {
       value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
     }
-    _impl_._has_bits_[0] |= 0x00000004U;
+    _impl_._has_bits_[0] |= 0x00000008U;
   } else {
-    _impl_._has_bits_[0] &= ~0x00000004U;
+    _impl_._has_bits_[0] &= ~0x00000008U;
   }
 
   _impl_.request_ = reinterpret_cast<::paxos::ClientRequest*>(value);
@@ -6265,14 +6576,14 @@ inline void CommitEntry::set_allocated_two_pc_status(::std::string* PROTOBUF_NUL
 
 // .paxos.ClientRequest m = 5;
 inline bool CommitEntry::has_m() const {
-  bool value = (_impl_._has_bits_[0] & 0x00000008U) != 0;
+  bool value = (_impl_._has_bits_[0] & 0x00000010U) != 0;
   PROTOBUF_ASSUME(!value || _impl_.m_ != nullptr);
   return value;
 }
 inline void CommitEntry::clear_m() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
   if (_impl_.m_ != nullptr) _impl_.m_->Clear();
-  _impl_._has_bits_[0] &= ~0x00000008U;
+  _impl_._has_bits_[0] &= ~0x00000010U;
 }
 inline const ::paxos::ClientRequest& CommitEntry::_internal_m() const {
   ::google::protobuf::internal::TSanRead(&_impl_);
@@ -6291,16 +6602,16 @@ inline void CommitEntry::unsafe_arena_set_allocated_m(
   }
   _impl_.m_ = reinterpret_cast<::paxos::ClientRequest*>(value);
   if (value != nullptr) {
-    _impl_._has_bits_[0] |= 0x00000008U;
+    _impl_._has_bits_[0] |= 0x00000010U;
   } else {
-    _impl_._has_bits_[0] &= ~0x00000008U;
+    _impl_._has_bits_[0] &= ~0x00000010U;
   }
   // @@protoc_insertion_point(field_unsafe_arena_set_allocated:paxos.CommitEntry.m)
 }
 inline ::paxos::ClientRequest* PROTOBUF_NULLABLE CommitEntry::release_m() {
   ::google::protobuf::internal::TSanWrite(&_impl_);
 
-  _impl_._has_bits_[0] &= ~0x00000008U;
+  _impl_._has_bits_[0] &= ~0x00000010U;
   ::paxos::ClientRequest* released = _impl_.m_;
   _impl_.m_ = nullptr;
   if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
@@ -6320,7 +6631,7 @@ inline ::paxos::ClientRequest* PROTOBUF_NULLABLE CommitEntry::unsafe_arena_relea
   ::google::protobuf::internal::TSanWrite(&_impl_);
   // @@protoc_insertion_point(field_release:paxos.CommitEntry.m)
 
-  _impl_._has_bits_[0] &= ~0x00000008U;
+  _impl_._has_bits_[0] &= ~0x00000010U;
   ::paxos::ClientRequest* temp = _impl_.m_;
   _impl_.m_ = nullptr;
   return temp;
@@ -6335,7 +6646,7 @@ inline ::paxos::ClientRequest* PROTOBUF_NONNULL CommitEntry::_internal_mutable_m
 }
 inline ::paxos::ClientRequest* PROTOBUF_NONNULL CommitEntry::mutable_m()
     ABSL_ATTRIBUTE_LIFETIME_BOUND {
-  _impl_._has_bits_[0] |= 0x00000008U;
+  _impl_._has_bits_[0] |= 0x00000010U;
   ::paxos::ClientRequest* _msg = _internal_mutable_m();
   // @@protoc_insertion_point(field_mutable:paxos.CommitEntry.m)
   return _msg;
@@ -6352,13 +6663,78 @@ inline void CommitEntry::set_allocated_m(::paxos::ClientRequest* PROTOBUF_NULLAB
     if (message_arena != submessage_arena) {
       value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
     }
-    _impl_._has_bits_[0] |= 0x00000008U;
+    _impl_._has_bits_[0] |= 0x00000010U;
   } else {
-    _impl_._has_bits_[0] &= ~0x00000008U;
+    _impl_._has_bits_[0] &= ~0x00000010U;
   }
 
   _impl_.m_ = reinterpret_cast<::paxos::ClientRequest*>(value);
   // @@protoc_insertion_point(field_set_allocated:paxos.CommitEntry.m)
+}
+
+// string phase2_result = 6;
+inline void CommitEntry::clear_phase2_result() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.phase2_result_.ClearToEmpty();
+  _impl_._has_bits_[0] &= ~0x00000002U;
+}
+inline const ::std::string& CommitEntry::phase2_result() const
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:paxos.CommitEntry.phase2_result)
+  return _internal_phase2_result();
+}
+template <typename Arg_, typename... Args_>
+PROTOBUF_ALWAYS_INLINE void CommitEntry::set_phase2_result(Arg_&& arg, Args_... args) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_._has_bits_[0] |= 0x00000002U;
+  _impl_.phase2_result_.Set(static_cast<Arg_&&>(arg), args..., GetArena());
+  // @@protoc_insertion_point(field_set:paxos.CommitEntry.phase2_result)
+}
+inline ::std::string* PROTOBUF_NONNULL CommitEntry::mutable_phase2_result()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  ::std::string* _s = _internal_mutable_phase2_result();
+  // @@protoc_insertion_point(field_mutable:paxos.CommitEntry.phase2_result)
+  return _s;
+}
+inline const ::std::string& CommitEntry::_internal_phase2_result() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.phase2_result_.Get();
+}
+inline void CommitEntry::_internal_set_phase2_result(const ::std::string& value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_._has_bits_[0] |= 0x00000002U;
+  _impl_.phase2_result_.Set(value, GetArena());
+}
+inline ::std::string* PROTOBUF_NONNULL CommitEntry::_internal_mutable_phase2_result() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_._has_bits_[0] |= 0x00000002U;
+  return _impl_.phase2_result_.Mutable( GetArena());
+}
+inline ::std::string* PROTOBUF_NULLABLE CommitEntry::release_phase2_result() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:paxos.CommitEntry.phase2_result)
+  if ((_impl_._has_bits_[0] & 0x00000002U) == 0) {
+    return nullptr;
+  }
+  _impl_._has_bits_[0] &= ~0x00000002U;
+  auto* released = _impl_.phase2_result_.Release();
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString()) {
+    _impl_.phase2_result_.Set("", GetArena());
+  }
+  return released;
+}
+inline void CommitEntry::set_allocated_phase2_result(::std::string* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (value != nullptr) {
+    _impl_._has_bits_[0] |= 0x00000002U;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000002U;
+  }
+  _impl_.phase2_result_.SetAllocated(value, GetArena());
+  if (::google::protobuf::internal::DebugHardenForceCopyDefaultString() && _impl_.phase2_result_.IsDefault()) {
+    _impl_.phase2_result_.Set("", GetArena());
+  }
+  // @@protoc_insertion_point(field_set_allocated:paxos.CommitEntry.phase2_result)
 }
 
 // -------------------------------------------------------------------
@@ -6622,6 +6998,132 @@ inline void Ack::set_allocated_status(::std::string* PROTOBUF_NULLABLE value) {
     _impl_.status_.Set("", GetArena());
   }
   // @@protoc_insertion_point(field_set_allocated:paxos.Ack.status)
+}
+
+// -------------------------------------------------------------------
+
+// HeartbeatRequest
+
+// .paxos.Ballot ballot = 1;
+inline bool HeartbeatRequest::has_ballot() const {
+  bool value = (_impl_._has_bits_[0] & 0x00000001U) != 0;
+  PROTOBUF_ASSUME(!value || _impl_.ballot_ != nullptr);
+  return value;
+}
+inline void HeartbeatRequest::clear_ballot() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.ballot_ != nullptr) _impl_.ballot_->Clear();
+  _impl_._has_bits_[0] &= ~0x00000001U;
+}
+inline const ::paxos::Ballot& HeartbeatRequest::_internal_ballot() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  const ::paxos::Ballot* p = _impl_.ballot_;
+  return p != nullptr ? *p : reinterpret_cast<const ::paxos::Ballot&>(::paxos::_Ballot_default_instance_);
+}
+inline const ::paxos::Ballot& HeartbeatRequest::ballot() const ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  // @@protoc_insertion_point(field_get:paxos.HeartbeatRequest.ballot)
+  return _internal_ballot();
+}
+inline void HeartbeatRequest::unsafe_arena_set_allocated_ballot(
+    ::paxos::Ballot* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (GetArena() == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.ballot_);
+  }
+  _impl_.ballot_ = reinterpret_cast<::paxos::Ballot*>(value);
+  if (value != nullptr) {
+    _impl_._has_bits_[0] |= 0x00000001U;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000001U;
+  }
+  // @@protoc_insertion_point(field_unsafe_arena_set_allocated:paxos.HeartbeatRequest.ballot)
+}
+inline ::paxos::Ballot* PROTOBUF_NULLABLE HeartbeatRequest::release_ballot() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+
+  _impl_._has_bits_[0] &= ~0x00000001U;
+  ::paxos::Ballot* released = _impl_.ballot_;
+  _impl_.ballot_ = nullptr;
+  if (::google::protobuf::internal::DebugHardenForceCopyInRelease()) {
+    auto* old = reinterpret_cast<::google::protobuf::MessageLite*>(released);
+    released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    if (GetArena() == nullptr) {
+      delete old;
+    }
+  } else {
+    if (GetArena() != nullptr) {
+      released = ::google::protobuf::internal::DuplicateIfNonNull(released);
+    }
+  }
+  return released;
+}
+inline ::paxos::Ballot* PROTOBUF_NULLABLE HeartbeatRequest::unsafe_arena_release_ballot() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  // @@protoc_insertion_point(field_release:paxos.HeartbeatRequest.ballot)
+
+  _impl_._has_bits_[0] &= ~0x00000001U;
+  ::paxos::Ballot* temp = _impl_.ballot_;
+  _impl_.ballot_ = nullptr;
+  return temp;
+}
+inline ::paxos::Ballot* PROTOBUF_NONNULL HeartbeatRequest::_internal_mutable_ballot() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (_impl_.ballot_ == nullptr) {
+    auto* p = ::google::protobuf::Message::DefaultConstruct<::paxos::Ballot>(GetArena());
+    _impl_.ballot_ = reinterpret_cast<::paxos::Ballot*>(p);
+  }
+  return _impl_.ballot_;
+}
+inline ::paxos::Ballot* PROTOBUF_NONNULL HeartbeatRequest::mutable_ballot()
+    ABSL_ATTRIBUTE_LIFETIME_BOUND {
+  _impl_._has_bits_[0] |= 0x00000001U;
+  ::paxos::Ballot* _msg = _internal_mutable_ballot();
+  // @@protoc_insertion_point(field_mutable:paxos.HeartbeatRequest.ballot)
+  return _msg;
+}
+inline void HeartbeatRequest::set_allocated_ballot(::paxos::Ballot* PROTOBUF_NULLABLE value) {
+  ::google::protobuf::Arena* message_arena = GetArena();
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  if (message_arena == nullptr) {
+    delete reinterpret_cast<::google::protobuf::MessageLite*>(_impl_.ballot_);
+  }
+
+  if (value != nullptr) {
+    ::google::protobuf::Arena* submessage_arena = value->GetArena();
+    if (message_arena != submessage_arena) {
+      value = ::google::protobuf::internal::GetOwnedMessage(message_arena, value, submessage_arena);
+    }
+    _impl_._has_bits_[0] |= 0x00000001U;
+  } else {
+    _impl_._has_bits_[0] &= ~0x00000001U;
+  }
+
+  _impl_.ballot_ = reinterpret_cast<::paxos::Ballot*>(value);
+  // @@protoc_insertion_point(field_set_allocated:paxos.HeartbeatRequest.ballot)
+}
+
+// int32 node_id = 2;
+inline void HeartbeatRequest::clear_node_id() {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.node_id_ = 0;
+  _impl_._has_bits_[0] &= ~0x00000002U;
+}
+inline ::int32_t HeartbeatRequest::node_id() const {
+  // @@protoc_insertion_point(field_get:paxos.HeartbeatRequest.node_id)
+  return _internal_node_id();
+}
+inline void HeartbeatRequest::set_node_id(::int32_t value) {
+  _internal_set_node_id(value);
+  _impl_._has_bits_[0] |= 0x00000002U;
+  // @@protoc_insertion_point(field_set:paxos.HeartbeatRequest.node_id)
+}
+inline ::int32_t HeartbeatRequest::_internal_node_id() const {
+  ::google::protobuf::internal::TSanRead(&_impl_);
+  return _impl_.node_id_;
+}
+inline void HeartbeatRequest::_internal_set_node_id(::int32_t value) {
+  ::google::protobuf::internal::TSanWrite(&_impl_);
+  _impl_.node_id_ = value;
 }
 
 // -------------------------------------------------------------------

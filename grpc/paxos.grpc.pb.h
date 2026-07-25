@@ -475,6 +475,14 @@ class Paxos final {
     std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::google::protobuf::Empty>> PrepareAsyncSendTwoPCMsg(::grpc::ClientContext* context, const ::paxos::TwoPCMsg& request, ::grpc::CompletionQueue* cq) {
       return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::google::protobuf::Empty>>(PrepareAsyncSendTwoPCMsgRaw(context, request, cq));
     }
+    // Leader -> backup heartbeat; backup only resets its timer, no meaningful reply.
+    virtual ::grpc::Status Heartbeat(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest& request, ::google::protobuf::Empty* response) = 0;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::google::protobuf::Empty>> AsyncHeartbeat(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::google::protobuf::Empty>>(AsyncHeartbeatRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::google::protobuf::Empty>> PrepareAsyncHeartbeat(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReaderInterface< ::google::protobuf::Empty>>(PrepareAsyncHeartbeatRaw(context, request, cq));
+    }
     class async_interface {
      public:
       virtual ~async_interface() {}
@@ -500,6 +508,9 @@ class Paxos final {
       virtual void SendMoveOn(::grpc::ClientContext* context, const ::paxos::MoveOnRequest* request, ::paxos::TransactionAck* response, ::grpc::ClientUnaryReactor* reactor) = 0;
       virtual void SendTwoPCMsg(::grpc::ClientContext* context, const ::paxos::TwoPCMsg* request, ::google::protobuf::Empty* response, std::function<void(::grpc::Status)>) = 0;
       virtual void SendTwoPCMsg(::grpc::ClientContext* context, const ::paxos::TwoPCMsg* request, ::google::protobuf::Empty* response, ::grpc::ClientUnaryReactor* reactor) = 0;
+      // Leader -> backup heartbeat; backup only resets its timer, no meaningful reply.
+      virtual void Heartbeat(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest* request, ::google::protobuf::Empty* response, std::function<void(::grpc::Status)>) = 0;
+      virtual void Heartbeat(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest* request, ::google::protobuf::Empty* response, ::grpc::ClientUnaryReactor* reactor) = 0;
     };
     typedef class async_interface experimental_async_interface;
     virtual class async_interface* async() { return nullptr; }
@@ -525,6 +536,8 @@ class Paxos final {
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::paxos::TransactionAck>* PrepareAsyncSendMoveOnRaw(::grpc::ClientContext* context, const ::paxos::MoveOnRequest& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::google::protobuf::Empty>* AsyncSendTwoPCMsgRaw(::grpc::ClientContext* context, const ::paxos::TwoPCMsg& request, ::grpc::CompletionQueue* cq) = 0;
     virtual ::grpc::ClientAsyncResponseReaderInterface< ::google::protobuf::Empty>* PrepareAsyncSendTwoPCMsgRaw(::grpc::ClientContext* context, const ::paxos::TwoPCMsg& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::google::protobuf::Empty>* AsyncHeartbeatRaw(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest& request, ::grpc::CompletionQueue* cq) = 0;
+    virtual ::grpc::ClientAsyncResponseReaderInterface< ::google::protobuf::Empty>* PrepareAsyncHeartbeatRaw(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest& request, ::grpc::CompletionQueue* cq) = 0;
   };
   class Stub final : public StubInterface {
    public:
@@ -599,6 +612,13 @@ class Paxos final {
     std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::google::protobuf::Empty>> PrepareAsyncSendTwoPCMsg(::grpc::ClientContext* context, const ::paxos::TwoPCMsg& request, ::grpc::CompletionQueue* cq) {
       return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::google::protobuf::Empty>>(PrepareAsyncSendTwoPCMsgRaw(context, request, cq));
     }
+    ::grpc::Status Heartbeat(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest& request, ::google::protobuf::Empty* response) override;
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::google::protobuf::Empty>> AsyncHeartbeat(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::google::protobuf::Empty>>(AsyncHeartbeatRaw(context, request, cq));
+    }
+    std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::google::protobuf::Empty>> PrepareAsyncHeartbeat(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest& request, ::grpc::CompletionQueue* cq) {
+      return std::unique_ptr< ::grpc::ClientAsyncResponseReader< ::google::protobuf::Empty>>(PrepareAsyncHeartbeatRaw(context, request, cq));
+    }
     class async final :
       public StubInterface::async_interface {
      public:
@@ -622,6 +642,8 @@ class Paxos final {
       void SendMoveOn(::grpc::ClientContext* context, const ::paxos::MoveOnRequest* request, ::paxos::TransactionAck* response, ::grpc::ClientUnaryReactor* reactor) override;
       void SendTwoPCMsg(::grpc::ClientContext* context, const ::paxos::TwoPCMsg* request, ::google::protobuf::Empty* response, std::function<void(::grpc::Status)>) override;
       void SendTwoPCMsg(::grpc::ClientContext* context, const ::paxos::TwoPCMsg* request, ::google::protobuf::Empty* response, ::grpc::ClientUnaryReactor* reactor) override;
+      void Heartbeat(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest* request, ::google::protobuf::Empty* response, std::function<void(::grpc::Status)>) override;
+      void Heartbeat(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest* request, ::google::protobuf::Empty* response, ::grpc::ClientUnaryReactor* reactor) override;
      private:
       friend class Stub;
       explicit async(Stub* stub): stub_(stub) { }
@@ -653,6 +675,8 @@ class Paxos final {
     ::grpc::ClientAsyncResponseReader< ::paxos::TransactionAck>* PrepareAsyncSendMoveOnRaw(::grpc::ClientContext* context, const ::paxos::MoveOnRequest& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::google::protobuf::Empty>* AsyncSendTwoPCMsgRaw(::grpc::ClientContext* context, const ::paxos::TwoPCMsg& request, ::grpc::CompletionQueue* cq) override;
     ::grpc::ClientAsyncResponseReader< ::google::protobuf::Empty>* PrepareAsyncSendTwoPCMsgRaw(::grpc::ClientContext* context, const ::paxos::TwoPCMsg& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::google::protobuf::Empty>* AsyncHeartbeatRaw(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest& request, ::grpc::CompletionQueue* cq) override;
+    ::grpc::ClientAsyncResponseReader< ::google::protobuf::Empty>* PrepareAsyncHeartbeatRaw(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest& request, ::grpc::CompletionQueue* cq) override;
     const ::grpc::internal::RpcMethod rpcmethod_Prepare_;
     const ::grpc::internal::RpcMethod rpcmethod_Accept_;
     const ::grpc::internal::RpcMethod rpcmethod_Commit_;
@@ -663,6 +687,7 @@ class Paxos final {
     const ::grpc::internal::RpcMethod rpcmethod_GetNodeInfo_;
     const ::grpc::internal::RpcMethod rpcmethod_SendMoveOn_;
     const ::grpc::internal::RpcMethod rpcmethod_SendTwoPCMsg_;
+    const ::grpc::internal::RpcMethod rpcmethod_Heartbeat_;
   };
   static std::unique_ptr<Stub> NewStub(const std::shared_ptr< ::grpc::ChannelInterface>& channel, const ::grpc::StubOptions& options = ::grpc::StubOptions());
 
@@ -682,6 +707,8 @@ class Paxos final {
     virtual ::grpc::Status GetNodeInfo(::grpc::ServerContext* context, const ::paxos::InfoRequest* request, ::paxos::NodeInfo* response);
     virtual ::grpc::Status SendMoveOn(::grpc::ServerContext* context, const ::paxos::MoveOnRequest* request, ::paxos::TransactionAck* response);
     virtual ::grpc::Status SendTwoPCMsg(::grpc::ServerContext* context, const ::paxos::TwoPCMsg* request, ::google::protobuf::Empty* response);
+    // Leader -> backup heartbeat; backup only resets its timer, no meaningful reply.
+    virtual ::grpc::Status Heartbeat(::grpc::ServerContext* context, const ::paxos::HeartbeatRequest* request, ::google::protobuf::Empty* response);
   };
   template <class BaseClass>
   class WithAsyncMethod_Prepare : public BaseClass {
@@ -883,7 +910,27 @@ class Paxos final {
       ::grpc::Service::RequestAsyncUnary(9, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
-  typedef WithAsyncMethod_Prepare<WithAsyncMethod_Accept<WithAsyncMethod_Commit<WithAsyncMethod_SendClientRequest<WithAsyncMethod_NewView<WithAsyncMethod_ReceiveAcceptAck<WithAsyncMethod_SendAliveUpdate<WithAsyncMethod_GetNodeInfo<WithAsyncMethod_SendMoveOn<WithAsyncMethod_SendTwoPCMsg<Service > > > > > > > > > > AsyncService;
+  template <class BaseClass>
+  class WithAsyncMethod_Heartbeat : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithAsyncMethod_Heartbeat() {
+      ::grpc::Service::MarkMethodAsync(10);
+    }
+    ~WithAsyncMethod_Heartbeat() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status Heartbeat(::grpc::ServerContext* /*context*/, const ::paxos::HeartbeatRequest* /*request*/, ::google::protobuf::Empty* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestHeartbeat(::grpc::ServerContext* context, ::paxos::HeartbeatRequest* request, ::grpc::ServerAsyncResponseWriter< ::google::protobuf::Empty>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(10, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  typedef WithAsyncMethod_Prepare<WithAsyncMethod_Accept<WithAsyncMethod_Commit<WithAsyncMethod_SendClientRequest<WithAsyncMethod_NewView<WithAsyncMethod_ReceiveAcceptAck<WithAsyncMethod_SendAliveUpdate<WithAsyncMethod_GetNodeInfo<WithAsyncMethod_SendMoveOn<WithAsyncMethod_SendTwoPCMsg<WithAsyncMethod_Heartbeat<Service > > > > > > > > > > > AsyncService;
   template <class BaseClass>
   class WithCallbackMethod_Prepare : public BaseClass {
    private:
@@ -1154,7 +1201,34 @@ class Paxos final {
     virtual ::grpc::ServerUnaryReactor* SendTwoPCMsg(
       ::grpc::CallbackServerContext* /*context*/, const ::paxos::TwoPCMsg* /*request*/, ::google::protobuf::Empty* /*response*/)  { return nullptr; }
   };
-  typedef WithCallbackMethod_Prepare<WithCallbackMethod_Accept<WithCallbackMethod_Commit<WithCallbackMethod_SendClientRequest<WithCallbackMethod_NewView<WithCallbackMethod_ReceiveAcceptAck<WithCallbackMethod_SendAliveUpdate<WithCallbackMethod_GetNodeInfo<WithCallbackMethod_SendMoveOn<WithCallbackMethod_SendTwoPCMsg<Service > > > > > > > > > > CallbackService;
+  template <class BaseClass>
+  class WithCallbackMethod_Heartbeat : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithCallbackMethod_Heartbeat() {
+      ::grpc::Service::MarkMethodCallback(10,
+          new ::grpc::internal::CallbackUnaryHandler< ::paxos::HeartbeatRequest, ::google::protobuf::Empty>(
+            [this](
+                   ::grpc::CallbackServerContext* context, const ::paxos::HeartbeatRequest* request, ::google::protobuf::Empty* response) { return this->Heartbeat(context, request, response); }));}
+    void SetMessageAllocatorFor_Heartbeat(
+        ::grpc::MessageAllocator< ::paxos::HeartbeatRequest, ::google::protobuf::Empty>* allocator) {
+      ::grpc::internal::MethodHandler* const handler = ::grpc::Service::GetHandler(10);
+      static_cast<::grpc::internal::CallbackUnaryHandler< ::paxos::HeartbeatRequest, ::google::protobuf::Empty>*>(handler)
+              ->SetMessageAllocator(allocator);
+    }
+    ~WithCallbackMethod_Heartbeat() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status Heartbeat(::grpc::ServerContext* /*context*/, const ::paxos::HeartbeatRequest* /*request*/, ::google::protobuf::Empty* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    virtual ::grpc::ServerUnaryReactor* Heartbeat(
+      ::grpc::CallbackServerContext* /*context*/, const ::paxos::HeartbeatRequest* /*request*/, ::google::protobuf::Empty* /*response*/)  { return nullptr; }
+  };
+  typedef WithCallbackMethod_Prepare<WithCallbackMethod_Accept<WithCallbackMethod_Commit<WithCallbackMethod_SendClientRequest<WithCallbackMethod_NewView<WithCallbackMethod_ReceiveAcceptAck<WithCallbackMethod_SendAliveUpdate<WithCallbackMethod_GetNodeInfo<WithCallbackMethod_SendMoveOn<WithCallbackMethod_SendTwoPCMsg<WithCallbackMethod_Heartbeat<Service > > > > > > > > > > > CallbackService;
   typedef CallbackService ExperimentalCallbackService;
   template <class BaseClass>
   class WithGenericMethod_Prepare : public BaseClass {
@@ -1322,6 +1396,23 @@ class Paxos final {
     }
     // disable synchronous version of this method
     ::grpc::Status SendTwoPCMsg(::grpc::ServerContext* /*context*/, const ::paxos::TwoPCMsg* /*request*/, ::google::protobuf::Empty* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+  };
+  template <class BaseClass>
+  class WithGenericMethod_Heartbeat : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithGenericMethod_Heartbeat() {
+      ::grpc::Service::MarkMethodGeneric(10);
+    }
+    ~WithGenericMethod_Heartbeat() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status Heartbeat(::grpc::ServerContext* /*context*/, const ::paxos::HeartbeatRequest* /*request*/, ::google::protobuf::Empty* /*response*/) override {
       abort();
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
@@ -1524,6 +1615,26 @@ class Paxos final {
     }
     void RequestSendTwoPCMsg(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
       ::grpc::Service::RequestAsyncUnary(9, context, request, response, new_call_cq, notification_cq, tag);
+    }
+  };
+  template <class BaseClass>
+  class WithRawMethod_Heartbeat : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawMethod_Heartbeat() {
+      ::grpc::Service::MarkMethodRaw(10);
+    }
+    ~WithRawMethod_Heartbeat() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status Heartbeat(::grpc::ServerContext* /*context*/, const ::paxos::HeartbeatRequest* /*request*/, ::google::protobuf::Empty* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    void RequestHeartbeat(::grpc::ServerContext* context, ::grpc::ByteBuffer* request, ::grpc::ServerAsyncResponseWriter< ::grpc::ByteBuffer>* response, ::grpc::CompletionQueue* new_call_cq, ::grpc::ServerCompletionQueue* notification_cq, void *tag) {
+      ::grpc::Service::RequestAsyncUnary(10, context, request, response, new_call_cq, notification_cq, tag);
     }
   };
   template <class BaseClass>
@@ -1744,6 +1855,28 @@ class Paxos final {
       return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
     }
     virtual ::grpc::ServerUnaryReactor* SendTwoPCMsg(
+      ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)  { return nullptr; }
+  };
+  template <class BaseClass>
+  class WithRawCallbackMethod_Heartbeat : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithRawCallbackMethod_Heartbeat() {
+      ::grpc::Service::MarkMethodRawCallback(10,
+          new ::grpc::internal::CallbackUnaryHandler< ::grpc::ByteBuffer, ::grpc::ByteBuffer>(
+            [this](
+                   ::grpc::CallbackServerContext* context, const ::grpc::ByteBuffer* request, ::grpc::ByteBuffer* response) { return this->Heartbeat(context, request, response); }));
+    }
+    ~WithRawCallbackMethod_Heartbeat() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable synchronous version of this method
+    ::grpc::Status Heartbeat(::grpc::ServerContext* /*context*/, const ::paxos::HeartbeatRequest* /*request*/, ::google::protobuf::Empty* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    virtual ::grpc::ServerUnaryReactor* Heartbeat(
       ::grpc::CallbackServerContext* /*context*/, const ::grpc::ByteBuffer* /*request*/, ::grpc::ByteBuffer* /*response*/)  { return nullptr; }
   };
   template <class BaseClass>
@@ -2016,9 +2149,36 @@ class Paxos final {
     // replace default version of method with streamed unary
     virtual ::grpc::Status StreamedSendTwoPCMsg(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::paxos::TwoPCMsg,::google::protobuf::Empty>* server_unary_streamer) = 0;
   };
-  typedef WithStreamedUnaryMethod_Prepare<WithStreamedUnaryMethod_Accept<WithStreamedUnaryMethod_Commit<WithStreamedUnaryMethod_SendClientRequest<WithStreamedUnaryMethod_NewView<WithStreamedUnaryMethod_ReceiveAcceptAck<WithStreamedUnaryMethod_SendAliveUpdate<WithStreamedUnaryMethod_GetNodeInfo<WithStreamedUnaryMethod_SendMoveOn<WithStreamedUnaryMethod_SendTwoPCMsg<Service > > > > > > > > > > StreamedUnaryService;
+  template <class BaseClass>
+  class WithStreamedUnaryMethod_Heartbeat : public BaseClass {
+   private:
+    void BaseClassMustBeDerivedFromService(const Service* /*service*/) {}
+   public:
+    WithStreamedUnaryMethod_Heartbeat() {
+      ::grpc::Service::MarkMethodStreamed(10,
+        new ::grpc::internal::StreamedUnaryHandler<
+          ::paxos::HeartbeatRequest, ::google::protobuf::Empty>(
+            [this](::grpc::ServerContext* context,
+                   ::grpc::ServerUnaryStreamer<
+                     ::paxos::HeartbeatRequest, ::google::protobuf::Empty>* streamer) {
+                       return this->StreamedHeartbeat(context,
+                         streamer);
+                  }));
+    }
+    ~WithStreamedUnaryMethod_Heartbeat() override {
+      BaseClassMustBeDerivedFromService(this);
+    }
+    // disable regular version of this method
+    ::grpc::Status Heartbeat(::grpc::ServerContext* /*context*/, const ::paxos::HeartbeatRequest* /*request*/, ::google::protobuf::Empty* /*response*/) override {
+      abort();
+      return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+    }
+    // replace default version of method with streamed unary
+    virtual ::grpc::Status StreamedHeartbeat(::grpc::ServerContext* context, ::grpc::ServerUnaryStreamer< ::paxos::HeartbeatRequest,::google::protobuf::Empty>* server_unary_streamer) = 0;
+  };
+  typedef WithStreamedUnaryMethod_Prepare<WithStreamedUnaryMethod_Accept<WithStreamedUnaryMethod_Commit<WithStreamedUnaryMethod_SendClientRequest<WithStreamedUnaryMethod_NewView<WithStreamedUnaryMethod_ReceiveAcceptAck<WithStreamedUnaryMethod_SendAliveUpdate<WithStreamedUnaryMethod_GetNodeInfo<WithStreamedUnaryMethod_SendMoveOn<WithStreamedUnaryMethod_SendTwoPCMsg<WithStreamedUnaryMethod_Heartbeat<Service > > > > > > > > > > > StreamedUnaryService;
   typedef Service SplitStreamedService;
-  typedef WithStreamedUnaryMethod_Prepare<WithStreamedUnaryMethod_Accept<WithStreamedUnaryMethod_Commit<WithStreamedUnaryMethod_SendClientRequest<WithStreamedUnaryMethod_NewView<WithStreamedUnaryMethod_ReceiveAcceptAck<WithStreamedUnaryMethod_SendAliveUpdate<WithStreamedUnaryMethod_GetNodeInfo<WithStreamedUnaryMethod_SendMoveOn<WithStreamedUnaryMethod_SendTwoPCMsg<Service > > > > > > > > > > StreamedService;
+  typedef WithStreamedUnaryMethod_Prepare<WithStreamedUnaryMethod_Accept<WithStreamedUnaryMethod_Commit<WithStreamedUnaryMethod_SendClientRequest<WithStreamedUnaryMethod_NewView<WithStreamedUnaryMethod_ReceiveAcceptAck<WithStreamedUnaryMethod_SendAliveUpdate<WithStreamedUnaryMethod_GetNodeInfo<WithStreamedUnaryMethod_SendMoveOn<WithStreamedUnaryMethod_SendTwoPCMsg<WithStreamedUnaryMethod_Heartbeat<Service > > > > > > > > > > > StreamedService;
 };
 
 }  // namespace paxos

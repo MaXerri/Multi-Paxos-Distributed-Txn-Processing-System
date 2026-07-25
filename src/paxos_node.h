@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <vector>
 #include <thread>
+#include <condition_variable>
 #include "../grpc/paxos.grpc.pb.h"
 #include "../grpc/paxos.pb.h"
 #include "call_data.h"
@@ -73,6 +74,7 @@ struct InFlightTransaction {
     std::chrono::steady_clock::time_point last_send; // last time sent
     std::atomic<bool> completed{false};         // whether ACK was received
     std::atomic<bool> sent{false};              // whether the commit was sent
+    int retries = 0;                            // PREPARE re-send count (retry once, then abort)
 };
 
 /** 
@@ -143,6 +145,9 @@ public:
 
     void HandlePreparedAndAborted(const paxos::TwoPCMsg& msg);
     void HandleCommittedAndAborted(const paxos::TwoPCMsg& msg);
+
+    // Backup receives a heartbeat from its leader -> just reset the election timer.
+    void HandleHeartbeat(const paxos::HeartbeatRequest& request);
 
 private:
     int node_id_;
@@ -244,6 +249,7 @@ private:
     std::mutex quorum_mutex_; // recheck
     
     std::unordered_set<int> executed_entries_; // all executed seq nums
+    std::unordered_set<int> executed_two_pc_;  // seqnums whose 2PC phase-2 (commit/abort) was already applied -- idempotency guard (executed_entries_mutex_)
     std::map<int, paxos::CommitEntry> entries_to_commit_; // committed entries
     int last_executed_seq_ = 0;
     int f_; // max faulty nodes
@@ -309,6 +315,17 @@ private:
     void TransactionRetryLoop();
     std::thread LaunchTransactionRetryThread();
     std::thread retry_thread_;
+
+    // Leader-only heartbeat sender. Started on becoming leader, stopped on demotion.
+    // The loop runs while heartbeat_running_ (i.e. while leader) but only *sends* when
+    // alive_ -- so a paused leader (prompt-pause) holds the thread and resumes after.
+    void StartHeartbeat();
+    void StopHeartbeat();
+    void HeartbeatLoop();
+    std::thread heartbeat_thread_;
+    std::atomic<bool> heartbeat_running_{false};
+    std::condition_variable heartbeat_cv_;
+    std::mutex heartbeat_mutex_;
 
     std::unordered_map<int, std::unordered_map<int, std::unordered_set<int>>> accepted_count_two_pc_commit_;
 

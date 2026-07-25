@@ -146,6 +146,23 @@ private:
 };
 
 
+// Leader -> backup heartbeat. Backup just resets its election timer; no meaningful reply.
+class HeartbeatCallData : public CallData {
+public:
+    HeartbeatCallData(paxos::Paxos::AsyncService* service,
+                      grpc::ServerCompletionQueue* cq,
+                      PaxosNode* node);
+
+    void Proceed() override;
+
+private:
+    PaxosNode* paxos_node_;
+    paxos::HeartbeatRequest request_;
+    google::protobuf::Empty reply_;
+    grpc::ServerAsyncResponseWriter<google::protobuf::Empty> responder_;
+};
+
+
 class AliveUpdateCallData : public CallData {
 public:
     AliveUpdateCallData(paxos::Paxos::AsyncService* service,
@@ -356,6 +373,22 @@ struct AsyncAcceptAckCall : public AsyncClientCallBase {
     void OnComplete(bool ok) override;
 
     void Cancel();
+};
+
+
+// Leader -> backup heartbeat, fire-and-forget (reply is ignored).
+struct AsyncHeartbeatCall : public AsyncClientCallBase {
+    paxos::HeartbeatRequest req;
+    grpc::ClientContext context;
+    grpc::Status status;
+    std::unique_ptr<grpc::ClientAsyncResponseReader<google::protobuf::Empty>> response_reader;
+    google::protobuf::Empty reply_;
+
+    AsyncHeartbeatCall(std::shared_ptr<paxos::Paxos::Stub> stub,
+                       const paxos::HeartbeatRequest& r,
+                       grpc::CompletionQueue* cq);
+
+    void OnComplete(bool ok) override;
 };
 
 

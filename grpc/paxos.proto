@@ -85,6 +85,14 @@ message Ack {
     string status = 6;
 }
 
+// Leader -> backups: keeps a blocked-but-alive leader from being usurped
+// while it waits on a cross-shard 2PC. Backup just resets its election timer;
+// no response is needed.
+message HeartbeatRequest {
+    Ballot ballot = 1;
+    int32 node_id = 2;
+}
+
 // Response from client
 message TransactionAck {
     bool accepted = 1; // could also be alive_status
@@ -166,5 +174,8 @@ service Paxos {
     rpc SendMoveOn(MoveOnRequest) returns (TransactionAck);
 
     rpc SendTwoPCMsg(TwoPCMsg) returns (google.protobuf.Empty);
+
+    // Leader -> backup heartbeat; backup only resets its timer, no meaningful reply.
+    rpc Heartbeat(HeartbeatRequest) returns (google.protobuf.Empty);
 
 }

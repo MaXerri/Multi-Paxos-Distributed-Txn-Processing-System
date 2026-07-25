@@ -236,6 +236,34 @@ void ReceiveAcceptAckCallData::Proceed() {
     }
 }
 
+HeartbeatCallData::HeartbeatCallData(
+    paxos::Paxos::AsyncService* service,
+    grpc::ServerCompletionQueue* cq,
+    PaxosNode* node)
+    : paxos_node_(node),
+      responder_(&ctx_)
+{
+    service_ = service;
+    cq_ = cq;
+    status_ = CREATE;
+    Proceed();
+}
+
+void HeartbeatCallData::Proceed() {
+    if (status_ == CREATE) {
+        status_ = PROCESS;
+        service_->RequestHeartbeat(&ctx_, &request_, &responder_, cq_, cq_, this);
+    } else if (status_ == PROCESS) {
+        new HeartbeatCallData(service_, cq_, paxos_node_);
+        paxos_node_->HandleHeartbeat(request_);   // backup just resets its timer
+        status_ = FINISH;
+        responder_.Finish(reply_, grpc::Status::OK, this);
+    } else {
+        assert(status_ == FINISH);
+        delete this;
+    }
+}
+
 AliveUpdateCallData::AliveUpdateCallData(paxos::Paxos::AsyncService* service,
                                          grpc::ServerCompletionQueue* cq,
                                          PaxosNode* paxos_node)
@@ -548,6 +576,22 @@ void AsyncAcceptAckCall::Cancel() {
     LOG << "[Node " << node_id_ << "] Cancelling AcceptAck RPC for seq: "
                 << ack.seqnum() << std::endl;
     context.TryCancel();
+}
+
+
+// Leader -> backup heartbeat. Fire-and-forget: the backup only resets its timer,
+// so we ignore ok/status entirely and just clean up.
+AsyncHeartbeatCall::AsyncHeartbeatCall(std::shared_ptr<paxos::Paxos::Stub> stub,
+                                       const paxos::HeartbeatRequest& r,
+                                       grpc::CompletionQueue* cq)
+    : req(r)
+{
+    response_reader = stub->AsyncHeartbeat(&context, req, cq);
+    response_reader->Finish(&reply_, &status, this);
+}
+
+void AsyncHeartbeatCall::OnComplete(bool ok) {
+    delete this;
 }
 
 

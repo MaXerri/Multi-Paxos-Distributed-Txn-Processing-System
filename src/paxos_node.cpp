@@ -96,7 +96,8 @@ void PaxosNode::Run() {
         new CommitCallData(&service_, cq_.get(), this);
         new NewViewCallData(&service_, cq_.get(), this);
         new SendClientRequestCallData(&service_, cq_.get(), this);
-        new ReceiveAcceptAckCallData(&service_, cq_.get(), this); 
+        new ReceiveAcceptAckCallData(&service_, cq_.get(), this);
+        new HeartbeatCallData(&service_, cq_.get(), this);
         new AliveUpdateCallData(&service_, cq_.get(), this);
         new GetNodeInfoCallData(&service_, cq_.get(), this);
         new MoveOnCallData(&service_, cq_.get(), this);
@@ -120,8 +121,8 @@ void PaxosNode::Run() {
     client_cq_thread_ = std::thread([this]() { this->PollClientCompletionQueue(); });
     client_cq_thread_.detach();  // independent, runs forever
 
-    // start the thread that checks for commit rety by the coordinator leader
-    // retry_thread_ = LaunchTransactionRetryThread();
+    // start the thread that checks for commit/prepare retry by the coordinator leader
+    retry_thread_ = LaunchTransactionRetryThread();
 
     // Optionally join threads if you want the main thread to wait
     for (auto& t : threads) {
@@ -985,6 +986,24 @@ void PaxosNode::SequentiallyExecuteCommittedEntries() {
         // outside lock
         bool success = ExecuteTransaction(entry.request(), entry.seqnum(), two_pc_Status);
 
+        // Apply phase-2 outcome for inherited entries to prevent replayed aborted COORD debits
+        // from being re-applied. Guarded by executed_two_pc_, so duplicate phase-2 commits are no-ops.
+        {
+            std::string p2;
+            {
+                std::lock_guard<std::mutex> lock(log_mutex_);
+                auto ait = accept_log_.find(entry.seqnum());
+                if (ait != accept_log_.end()) p2 = ait->second.phase2_result();
+            }
+            if (p2 == "C_COORD" || p2 == "C" || p2 == "A_COORD" || p2 == "A_PART_COMMIT") {
+                paxos::CommitEntry ce;
+                ce.set_seqnum(entry.seqnum());
+                ce.set_two_pc_status(p2);
+                ce.mutable_m()->CopyFrom(entry.request());
+                ExecuteRepeatedTwoPCEntry(ce);
+            }
+        }
+
         if (role_ == Role::LEADER){
             
             // Handle client reply if present
@@ -1847,9 +1866,52 @@ void PaxosNode::ResetElectionTimer() {
 
 }
 
+void PaxosNode::HandleHeartbeat(const paxos::HeartbeatRequest& request) {
+    if (!alive_.load() || role_ != Role::BACKUP) return;
+    ResetElectionTimer();
+}
+
+void PaxosNode::StartHeartbeat() {
+    StopHeartbeat();                       // clear any stale sender first
+    heartbeat_running_.store(true);
+    heartbeat_thread_ = std::thread(&PaxosNode::HeartbeatLoop, this);
+}
+
+void PaxosNode::StopHeartbeat() {
+    {
+        std::lock_guard<std::mutex> lock(heartbeat_mutex_);
+        heartbeat_running_.store(false);
+    }
+    heartbeat_cv_.notify_all();
+    if (heartbeat_thread_.joinable()) {
+        heartbeat_thread_.join();
+    }
+}
+
+// Runs while this node holds leadership (heartbeat_running_). It only *sends* while alive_
+// and still LEADER, so a paused leader keeps the thread but emits nothing, then resumes when un-paused.
+void PaxosNode::HeartbeatLoop() {
+    std::unique_lock<std::mutex> lock(heartbeat_mutex_);
+    while (heartbeat_running_.load()) {
+        if (alive_.load() && role_ == Role::LEADER) {
+            Ballot b = current_ballot_;
+            for (auto& [peer_id, stub] : peer_stubs_) {
+                if (peer_id == node_id_) continue;
+                if (peer_id < intra_c_nid_range_.first || peer_id > intra_c_nid_range_.second) continue; // own cluster only
+                paxos::HeartbeatRequest hb;
+                hb.set_node_id(node_id_);
+                hb.mutable_ballot()->set_counter(b.counter);
+                hb.mutable_ballot()->set_node_id(b.node_id);
+                new AsyncHeartbeatCall(stub, hb, client_cq_.get());
+            }
+        }
+        heartbeat_cv_.wait_for(lock, std::chrono::milliseconds(1000),
+                               [this] { return !heartbeat_running_.load(); });
+    }
+}
 
 void PaxosNode::BecomeLeader(Ballot ballot) {
-    
+
     StopElectionTimer();
 
     {
@@ -1861,10 +1923,13 @@ void PaxosNode::BecomeLeader(Ballot ballot) {
 
     LOG << "Node " << node_id_ << " officially becomes leader with ballot " << ballot.ToString() << std::endl;
 
+    StartHeartbeat();   // keep backups' timers alive while we hold leadership (esp. when blocked on a 2PC)
+
 }
 
 // hello
 void PaxosNode::DemoteToBackup() {
+    StopHeartbeat();   // a backup must not send heartbeats
     {
         role_ = Role::BACKUP;
         // Clear our own leadership claim. BecomeLeader sets leader_id_ = node_id_,
@@ -2363,6 +2428,7 @@ void PaxosNode::ExecuteRepeatedTwoPCEntry(paxos::CommitEntry entry) {
 
     std::string two_pc_status = entry.two_pc_status();
     int seqnum = entry.seqnum();
+    // TODO: potential idempotency check but i dont think I need this
     LOG << "[Node " << node_id_ << (entry.m().from_account()) << (entry.m().to_account())  << std::endl;
     int from = std::stoi((entry.m().from_account()));
     int to = std::stoi(entry.m().to_account());
@@ -2486,33 +2552,34 @@ void PaxosNode::HandleCommittedAndAborted(const paxos::TwoPCMsg& msg) {
 }
 
 void PaxosNode::TransactionRetryLoop() {
-    std::chrono::milliseconds timeout = std::chrono::milliseconds(10000);
+    std::chrono::milliseconds timeout = std::chrono::milliseconds(1000);
     while (true) {
         auto now = std::chrono::steady_clock::now();
-        
 
-        for (auto& entry: in_flight_two_pc_transactions_) {
-            if (entry.last_send != std::chrono::steady_clock::time_point{} && 
-                !entry.completed.load() 
-                && now - entry.last_send >= timeout) {
-                
-                entry.last_send = now;
-                LOG << "[Node " << node_id_ << "] retrying 2PC commit/abort message for timestamp " 
-                          << entry.msg.m().timestamp() << " of type " << entry.msg.type() << std::endl;
-            }
-        }
-
+        // Phase-1 PREPARE: right after a participant-side failover the coordinator's cached
+        // participant-leader can be stale, so the PREPARE may have gone to a dead node. Retry ONCE
         for (auto& entry: in_flight_two_pc_prepares_) {
-            if (entry.sent.load() && entry.last_send != std::chrono::steady_clock::time_point{} && 
-                !entry.completed.load() 
+            if (entry.sent.load() && entry.last_send != std::chrono::steady_clock::time_point{} &&
+                !entry.completed.load()
                 && now - entry.last_send >= timeout) {
-                
-                LOG << "[Node " << node_id_ << "] coord aborting txn due to timeout for prepare " << std::endl;
-                entry.completed = true; // stop retrying
-                HandlePreparedTimeout(entry.msg.m().timestamp());
+
+                if (entry.retries == 0) {
+                    entry.retries = 1;
+                    entry.last_send = now;
+                    int part_cluster = shard_map_[std::stoi(entry.msg.m().to_account())];
+                    LOG << "[Node " << node_id_ << "] retrying 2PC PREPARE for ts "
+                              << entry.msg.m().timestamp() << " to participant cluster " << part_cluster << std::endl;
+                    new AsyncCall(peer_stubs_[cluster_leaders_[part_cluster]], client_cq_.get(), entry.msg.m(), nullptr);
+                } else {
+                    LOG << "[Node " << node_id_ << "] coord aborting txn due to prepare timeout after retry, ts "
+                              << entry.msg.m().timestamp() << std::endl;
+                    entry.completed = true; // stop retrying
+                    HandlePreparedTimeout(entry.msg.m().timestamp());
+                }
             }
         }
 
+        // Phase-2 COMMIT/ABORT: No retry since 2pc is a blocking protocol
 
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
@@ -2591,6 +2658,8 @@ void PaxosNode::HandlePreparedTimeout(int timestamp) {
 
 void PaxosNode::ResetNode() {
 
+    StopHeartbeat();   // node is going back to backup state
+
     // reset attributes
     {
         std::lock_guard<std::mutex> lock(election_mutex_);
@@ -2639,6 +2708,7 @@ void PaxosNode::ResetNode() {
 
 
     executed_entries_.clear();
+    executed_two_pc_.clear();
     modified_accounts_.clear();
     accepted_count_two_pc_commit_.clear();
     digest_to_seqnum_.clear();

@@ -136,6 +136,7 @@ static const char* Paxos_method_names[] = {
   "/paxos.Paxos/GetNodeInfo",
   "/paxos.Paxos/SendMoveOn",
   "/paxos.Paxos/SendTwoPCMsg",
+  "/paxos.Paxos/Heartbeat",
 };
 
 std::unique_ptr< Paxos::Stub> Paxos::NewStub(const std::shared_ptr< ::grpc::ChannelInterface>& channel, const ::grpc::StubOptions& options) {
@@ -155,6 +156,7 @@ Paxos::Stub::Stub(const std::shared_ptr< ::grpc::ChannelInterface>& channel, con
   , rpcmethod_GetNodeInfo_(Paxos_method_names[7], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
   , rpcmethod_SendMoveOn_(Paxos_method_names[8], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
   , rpcmethod_SendTwoPCMsg_(Paxos_method_names[9], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
+  , rpcmethod_Heartbeat_(Paxos_method_names[10], options.suffix_for_stats(),::grpc::internal::RpcMethod::NORMAL_RPC, channel)
   {}
 
 ::grpc::Status Paxos::Stub::Prepare(::grpc::ClientContext* context, const ::paxos::PrepareRequest& request, ::paxos::PromiseResponse* response) {
@@ -387,6 +389,29 @@ void Paxos::Stub::async::SendTwoPCMsg(::grpc::ClientContext* context, const ::pa
   return result;
 }
 
+::grpc::Status Paxos::Stub::Heartbeat(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest& request, ::google::protobuf::Empty* response) {
+  return ::grpc::internal::BlockingUnaryCall< ::paxos::HeartbeatRequest, ::google::protobuf::Empty, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), rpcmethod_Heartbeat_, context, request, response);
+}
+
+void Paxos::Stub::async::Heartbeat(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest* request, ::google::protobuf::Empty* response, std::function<void(::grpc::Status)> f) {
+  ::grpc::internal::CallbackUnaryCall< ::paxos::HeartbeatRequest, ::google::protobuf::Empty, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_Heartbeat_, context, request, response, std::move(f));
+}
+
+void Paxos::Stub::async::Heartbeat(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest* request, ::google::protobuf::Empty* response, ::grpc::ClientUnaryReactor* reactor) {
+  ::grpc::internal::ClientCallbackUnaryFactory::Create< ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(stub_->channel_.get(), stub_->rpcmethod_Heartbeat_, context, request, response, reactor);
+}
+
+::grpc::ClientAsyncResponseReader< ::google::protobuf::Empty>* Paxos::Stub::PrepareAsyncHeartbeatRaw(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest& request, ::grpc::CompletionQueue* cq) {
+  return ::grpc::internal::ClientAsyncResponseReaderHelper::Create< ::google::protobuf::Empty, ::paxos::HeartbeatRequest, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(channel_.get(), cq, rpcmethod_Heartbeat_, context, request);
+}
+
+::grpc::ClientAsyncResponseReader< ::google::protobuf::Empty>* Paxos::Stub::AsyncHeartbeatRaw(::grpc::ClientContext* context, const ::paxos::HeartbeatRequest& request, ::grpc::CompletionQueue* cq) {
+  auto* result =
+    this->PrepareAsyncHeartbeatRaw(context, request, cq);
+  result->StartCall();
+  return result;
+}
+
 Paxos::Service::Service() {
   AddMethod(new ::grpc::internal::RpcServiceMethod(
       Paxos_method_names[0],
@@ -488,6 +513,16 @@ Paxos::Service::Service() {
              ::google::protobuf::Empty* resp) {
                return service->SendTwoPCMsg(ctx, req, resp);
              }, this)));
+  AddMethod(new ::grpc::internal::RpcServiceMethod(
+      Paxos_method_names[10],
+      ::grpc::internal::RpcMethod::NORMAL_RPC,
+      new ::grpc::internal::RpcMethodHandler< Paxos::Service, ::paxos::HeartbeatRequest, ::google::protobuf::Empty, ::grpc::protobuf::MessageLite, ::grpc::protobuf::MessageLite>(
+          [](Paxos::Service* service,
+             ::grpc::ServerContext* ctx,
+             const ::paxos::HeartbeatRequest* req,
+             ::google::protobuf::Empty* resp) {
+               return service->Heartbeat(ctx, req, resp);
+             }, this)));
 }
 
 Paxos::Service::~Service() {
@@ -557,6 +592,13 @@ Paxos::Service::~Service() {
 }
 
 ::grpc::Status Paxos::Service::SendTwoPCMsg(::grpc::ServerContext* context, const ::paxos::TwoPCMsg* request, ::google::protobuf::Empty* response) {
+  (void) context;
+  (void) request;
+  (void) response;
+  return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "");
+}
+
+::grpc::Status Paxos::Service::Heartbeat(::grpc::ServerContext* context, const ::paxos::HeartbeatRequest* request, ::google::protobuf::Empty* response) {
   (void) context;
   (void) request;
   (void) response;
