@@ -13,6 +13,17 @@ inline std::mutex& cout_mutex() {
 }
 }  // namespace loginternal
 
+// Compile-time trace switch. Traces are OFF by default; build with -DPAXOS_TRACE
+// (e.g. cmake -DPAXOS_TRACE=ON) to compile them in. Because this is a constexpr
+// constant, `if constexpr (kTrace)` lets the compiler physically strip every
+// disabled LOG statement -- no branch, no LogLine, no string literals emitted.
+inline constexpr bool kTrace =
+#ifdef PAXOS_TRACE
+    true;
+#else
+    false;
+#endif
+
 // Thread-safe line logger.
 //
 // Accumulates one full statement into a local ostringstream and emits it to
@@ -51,6 +62,13 @@ private:
     std::ostringstream oss_;
 };
 
-#define LOG LogLine()
+// Trace logging: compiled out entirely unless PAXOS_TRACE is defined.
+// The inverted `!kTrace {} else` form is dangling-else safe, so a following
+// `else` binds to the caller's `if`, not to this macro.
+#define LOG if constexpr (!kTrace) {} else LogLine()
+
+// Error logging: always compiled in, regardless of PAXOS_TRACE, so real
+// failures still surface in a no-trace (benchmark/default) build.
+#define LOGERR LogLine()
 
 #endif  // LOG_H
