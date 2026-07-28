@@ -42,7 +42,22 @@ make -j4
 - `<x-shard_frac>`: Fraction of transactions that are cross-shard (0.0 - 1.0).
 - `<skew>`: Skew parameter for transaction distribution.
 
+## Interactive Commands
 
+The program pauses between transaction sets (and after the final set) with the prompt
+`Enter command to get up to and including set <N>:`. Arguments are space-separated, so use
+`PrintBalance 4005` rather than `PrintBalance(4005)`.
+
+| Command | Description |
+| --- | --- |
+| `PrintBalance <item_id>` | Prints the balance of that data item on all 3 nodes of its cluster (untouched items report the initial balance of 10). |
+| `PrintDB` | Prints the data items modified in this test case on all 9 nodes. |
+| `PrintView` | Prints every new-view message exchanged since the start of the test case, one per leader election. |
+| `Performance` | Prints throughput and latency for the set just completed, measured from the client's first transaction to its last reply. |
+| `PrintReshard` | Triggers resharding and prints a triplet `(item_id, source_cluster, dest_cluster)` for each item that moved, then applies the new shard map. |
+| `PrintLog <node_id>` | Prints the log state of a single node. |
+| `PrintStatus <seq_num>` | Prints the status of that sequence number on every node. |
+| `Continue` | Resumes execution with the next set. |
 
 ## Features
 
