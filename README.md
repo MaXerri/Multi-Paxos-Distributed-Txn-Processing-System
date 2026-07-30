@@ -41,7 +41,7 @@ cmake --build build_trace -j4
 Then run `./build_trace/paxos_node ...` for the traced binary or `./build/paxos_node ...` for
 the quiet one. Since `PAXOS_TRACE` is cached, switching a directory back and forth requires
 reconfiguring it with `-DPAXOS_TRACE=OFF` (or deleting the directory) — keeping two build
-directories avoids that.
+directories avoids that.  
 
 ## Usage
 
