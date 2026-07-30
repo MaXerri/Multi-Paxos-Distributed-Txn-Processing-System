@@ -27,6 +27,22 @@ cmake ..
 make -j4
 ```
 
+### Trace Logging
+
+Trace output is off by default: every `LOG` statement is compiled out, so the default build
+prints only command output and real errors. To build with traces compiled in, configure with
+`-DPAXOS_TRACE=ON` in a separate build directory:
+
+```bash
+cmake -S . -B build_trace -DPAXOS_TRACE=ON
+cmake --build build_trace -j4
+```
+
+Then run `./build_trace/paxos_node ...` for the traced binary or `./build/paxos_node ...` for
+the quiet one. Since `PAXOS_TRACE` is cached, switching a directory back and forth requires
+reconfiguring it with `-DPAXOS_TRACE=OFF` (or deleting the directory) — keeping two build
+directories avoids that.
+
 ## Usage
 
 ```bash
