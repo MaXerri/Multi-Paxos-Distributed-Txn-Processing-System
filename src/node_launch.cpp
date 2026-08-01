@@ -745,7 +745,7 @@ int main(int argc, char* argv[]) {
                     << " with active nodes [";
             bool first = true;
             for (int node_id : active_nodes_set) {
-                if (!first) LOG << ",";
+                if (!first) {LOG << ",";}
                 LOG << node_id;
                 first = false;
             }
