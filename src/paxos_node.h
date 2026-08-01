@@ -137,7 +137,7 @@ public:
 
     bool IsClientCQRunning() const { return client_cq_running_.load(); }
 
-    static std::string AcceptLogToString(std::map<int, paxos::AcceptedEntry> accept_log);
+    static std::string AcceptLogToString(const std::map<int, paxos::AcceptedEntry>& accept_log);
 
     void OnNewViewCallFinished(NewViewCallData* call_data);
 
@@ -307,7 +307,7 @@ private:
     void SendReplyToCoordLeader(SendClientRequestCallData* call_data, int seq_num, std::string two_pc_status);
     std::unordered_map<int, int> digest_to_seqnum_; // map of digest to seqnum for 2pc
 
-    void ExecuteRepeatedTwoPCEntry(paxos::CommitEntry entry);
+    void ExecuteRepeatedTwoPCEntry(const paxos::CommitEntry& entry);
     
     std::vector<InFlightTransaction> in_flight_two_pc_transactions_{5000}; // key = ????
     std::vector<InFlightTransaction> in_flight_two_pc_prepares_{5000}; 
@@ -329,7 +329,7 @@ private:
 
     std::unordered_map<int, std::unordered_map<int, std::unordered_set<int>>> accepted_count_two_pc_commit_;
 
-    void SendClientReplyTwoPC(const paxos::CommitEntry entry, int seq_num, bool success);
+    void SendClientReplyTwoPC(const paxos::CommitEntry& entry, int seq_num, bool success);
 
     void ResetNode();
     int num_clusters_;

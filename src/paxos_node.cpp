@@ -2111,7 +2111,7 @@ void PaxosNode::HandleSetAlive(const paxos::AliveUpdateRequest& request, paxos::
 
 }
 
-std::string PaxosNode::AcceptLogToString(std::map<int, paxos::AcceptedEntry> accept_log) {
+std::string PaxosNode::AcceptLogToString(const std::map<int, paxos::AcceptedEntry>& accept_log) {
     std::string result;
     result += "{";
     for (const auto& [seq, entry] : accept_log) {
@@ -2420,7 +2420,7 @@ void PaxosNode::StartSecondPhase(paxos::TwoPCMsg msg) {
     return;
 }
 
-void PaxosNode::ExecuteRepeatedTwoPCEntry(paxos::CommitEntry entry) {
+void PaxosNode::ExecuteRepeatedTwoPCEntry(const paxos::CommitEntry& entry) {
 
 
     LOG << "[Node " << node_id_ << "] Enter Re-executing TwoPC CommitEntry for seqnum " 
@@ -2591,7 +2591,7 @@ std::thread PaxosNode::LaunchTransactionRetryThread() {
 }
 
 
-void PaxosNode::SendClientReplyTwoPC(const paxos::CommitEntry entry, int seq_num, bool success) {
+void PaxosNode::SendClientReplyTwoPC(const paxos::CommitEntry& entry, int seq_num, bool success) {
 
     if (!alive_.load()) return;
     
