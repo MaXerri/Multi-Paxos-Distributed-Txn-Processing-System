@@ -280,7 +280,7 @@ public:
                    bool prompt_pause,
                    bool reset_state,
                    bool reshard,
-                   paxos::ShardMap new_shard_map
+                   const paxos::ShardMap& new_shard_map
                   );
 
     void OnComplete(bool ok) override;

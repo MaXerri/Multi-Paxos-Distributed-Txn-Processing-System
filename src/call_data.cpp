@@ -425,7 +425,7 @@ AliveAsyncCall::AliveAsyncCall(std::shared_ptr<paxos::Paxos::Stub> stub,
                                bool prompt_pause, 
                                bool reset_state,
                                bool reshard,
-                               paxos::ShardMap new_shard_map
+                               const paxos::ShardMap& new_shard_map
                                //std::function<void(bool)> callback
                             )
     : stub_(std::move(stub)),
