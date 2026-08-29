@@ -73,7 +73,7 @@ private:
     std::mutex pending_mutex_;
     std::condition_variable pending_cv_;
     std::atomic<bool> stop_timer_{false};
-    std::chrono::milliseconds retry_interval_{1000}; //cchange this 2000
+    std::chrono::milliseconds retry_interval_{300}; //cchange this 2000
     std::thread timer_thread_;
 
     // Helper functions
