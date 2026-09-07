@@ -107,7 +107,7 @@ void PaxosNode::Run() {
     LOG<<"All Handlers initialized" << std::endl;
     
     // start server side event loop threads
-    int numThreads = 3 ; // pool 
+    int numThreads = 2 ; // pool 
     std::vector<std::thread> threads;
     for (int i = 0; i < numThreads; ++i) {
         threads.emplace_back([this] {  
@@ -262,6 +262,29 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
         }
     }
 
+    // A retry/duplicate broadcast of an already-known timestamp must be rejected here,
+    // before any balance_locks_ is touched. If the original has already finished and
+    // released its locks by the time this retry arrives, letting it through would
+    // re-acquire those locks (they're genuinely free) and then bail out at the
+    // pending_or_completed_ts_ check further below without ever releasing them --
+    // a permanent per-account lock leak. Confirmed via two independent captures
+    // (account 4222 on node_4, account 5421 on node_4): each showed a second
+    // "acquired lock" for the account landing right before "ignoring duplicate",
+    // after which every future transaction on that account was rejected forever.
+    // This is a fast-path check only -- the later check (right before seqnum
+    // assignment) stays, since it's the atomic claim that resolves two genuinely-new
+    // requests racing each other for the same brand-new timestamp.
+    {
+        std::lock_guard<std::mutex> lock(pending_mutex_);
+        if (pending_or_completed_ts_.find(request.timestamp()) != pending_or_completed_ts_.end()) {
+            LOG << "Node " << node_id_ << " found existing pending/completed request with timestamp "
+                      << request.timestamp() << " - ignoring duplicate before touching any locks." << std::endl;
+            paxos::TransactionAck reply;
+            call_data->Respond(reply);
+            return;
+        }
+    }
+
     // check if we have intra-shard txn or not
     bool read_only = request.read_only();
     bool participant = (request.two_pc_msg() == "PREPARE");
@@ -351,9 +374,13 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
             }
         }
 
-
+        bool already_pending = false;
+        {
+            std::lock_guard<std::mutex> lock(pending_mutex_);
+            already_pending = pending_or_completed_ts_.count(request.timestamp()) > 0;
+        }
         // send to leader of partcipant cluster:
-        if (!intra_shard && participant == false) {
+        if (!intra_shard && participant == false && !already_pending) {
             LOG << "Node " << node_id_ << " sending 2pc prepare to participant cluster leader." << std::endl;
 
             int participant_cluster_id_ = shard_map_[r];
@@ -452,7 +479,10 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
     }
 
     // save digest (timestampt atm) to seqnum map. Only used for 2pc
-    digest_to_seqnum_[request.timestamp()] = seqnum;
+    {
+        std::lock_guard<std::mutex> lock(digest_to_seqnum_mutex_);
+        digest_to_seqnum_[request.timestamp()] = seqnum;
+    }
 
     LOG << "Node " << node_id_ << " broadcasting Accept for seqnum "
               << seqnum << " with ballot " << current_ballot_.ToString() << std::endl;
@@ -573,9 +603,18 @@ void PaxosNode::SendPromise() {
 void PaxosNode::HandlePromise(const paxos::PromiseResponse& reply) {
     if (!alive_.load()) return; 
 
+    std::string log_snapshot;
+    {
+        // accept_log_ is guarded by log_mutex_, not printlog_mutex_. Snapshot under the
+        // correct lock: AcceptLogToString() walks the whole map, and iterating it while
+        // another thread inserts under log_mutex_ is undefined behaviour, not a stale read.
+        // The two locks are never held simultaneously, so no ordering hazard is added.
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        log_snapshot = PaxosNode::AcceptLogToString(accept_log_);
+    }
     {
         std::lock_guard<std::mutex> lock(printlog_mutex_);
-        print_log_ += "<ACK, (" + std::to_string(reply.ballot().counter()) + ", " + std::to_string(reply.ballot().node_id()) + "), " + PaxosNode::AcceptLogToString(accept_log_) + "> \n";
+        print_log_ += "<ACK, (" + std::to_string(reply.ballot().counter()) + ", " + std::to_string(reply.ballot().node_id()) + "), " + log_snapshot + "> \n";
     }
 
     if (!reply.promised()) {
@@ -719,7 +758,10 @@ void PaxosNode::MergeAcceptLogsFromPromises() {
             // misses, and drops the participant's PREPARED -> the cross-shard 2PC hangs after a
             // coordinator leader change. Seeding it lets the new leader recognize phase-1 as done
             // and drive phase-2.
-            digest_to_seqnum_[req.timestamp()] = seq;
+            {
+                std::lock_guard<std::mutex> dlock(digest_to_seqnum_mutex_);
+                digest_to_seqnum_[req.timestamp()] = seq;
+            }
 
             const std::string& p1 = entry.two_pc_status();
             if ((p1 == "COORD" || p1 == "P") && entry.phase2_result().empty()) continue; // in-flight 2PC
@@ -902,8 +944,10 @@ void PaxosNode::CommitEntry(const paxos::Ack ack) {
             LOG << "[Leader] Node " << node_id_ << " commiting off of new-view accepts or just repeated commit for seqnum (like for 2pc commit) " << seqnum << std::endl;
             
             paxos::AcceptedEntry entry_to_copy_from;
-            entry_to_copy_from = accept_log_[seqnum]; // should be present in accept log
-
+            {
+                std::lock_guard<std::mutex> lock(log_mutex_);
+                entry_to_copy_from = accept_log_[seqnum]; // should be present in accept log. maybe use find??
+            }
 
             entry.mutable_ballot()->set_counter(entry_to_copy_from.ballot().counter());
             entry.mutable_ballot()->set_node_id(entry_to_copy_from.ballot().node_id());
@@ -920,6 +964,9 @@ void PaxosNode::CommitEntry(const paxos::Ack ack) {
             entry.mutable_ballot()->set_node_id(it->second.ballot().node_id());
             entry.set_seqnum(it->second.seqnum());
             entry.mutable_request()->CopyFrom(it->second.request());
+            // Unlike the fallback branch above, this path used to skip .m(), leaving it
+            // empty and crashing ExecuteRepeatedTwoPCEntry's std::stoi(from_account()).
+            entry.mutable_m()->CopyFrom(it->second.m());
 
             entry.set_two_pc_status(ack.status());
             LOG << "entry two pc status is " << entry.two_pc_status() << "for seqnum " << entry.seqnum() << std::endl;
@@ -1029,13 +1076,13 @@ void PaxosNode::SequentiallyExecuteCommittedEntries() {
             }
 
             if (call_data && two_pc_Status != "A" && two_pc_Status != "P" && two_pc_Status != "COORD") {
-                SendClientReply(call_data, entry.seqnum(), success);
+                SendClientReply(call_data, entry.request(), entry.seqnum(), success);
             } 
             else if (two_pc_Status == "A" || two_pc_Status == "P") {
                 LOG << "[Leader] Node " << node_id_ << " sending reply for seqnum " 
                         << entry.seqnum() << " due to 2PC status " << two_pc_Status << std::endl;
 
-                SendReplyToCoordLeader(call_data, entry.seqnum(), two_pc_Status);
+                SendReplyToCoordLeader(call_data, entry.request(), entry.seqnum(), two_pc_Status);
             }
             else if (two_pc_Status == "COORD") {
                 LOG << "[Leader] Node " << node_id_ << " executed " 
@@ -1077,14 +1124,14 @@ void PaxosNode::SequentiallyExecuteCommittedEntries() {
             }
 
             else if (entry.request().client_id() != "NO-OP") {
-                //SendClientReply(nullptr, entry.seqnum(), success); // no call data, but still send reply
+                SendClientReply(nullptr, entry.request(), entry.seqnum(), success); // no call data, but still send reply TODO check this!!!!!
                 std::cerr << "[Leader] WARNING: No CallData for seqnum " 
                         << entry.seqnum() << " client " 
                         << entry.request().client_id() << std::endl;
             }
             else if (call_data != nullptr) {
                 LOG << "intra-shard normal sendreply" << std::endl;
-                SendClientReply(call_data, entry.seqnum(), success);
+                SendClientReply(call_data, entry.request(), entry.seqnum(), success);
             }
         }
         else { // backup
@@ -1154,8 +1201,11 @@ bool PaxosNode::ExecuteTransaction(const paxos::ClientRequest& request, int seqn
     if (intra_shard) {
         accounts_[from] -= amt;
         accounts_[to] += amt;
-        modified_accounts_.insert(from);
-        modified_accounts_.insert(to);
+        {
+            std::lock_guard<std::mutex> lock(modified_accounts_mutex_);
+            modified_accounts_.insert(from);
+            modified_accounts_.insert(to);
+        }
         //UpdateBalance(from, amt, true);
         //UpdateBalance(to, amt, false);
         balance_locks_[from].unlock();
@@ -1170,7 +1220,10 @@ bool PaxosNode::ExecuteTransaction(const paxos::ClientRequest& request, int seqn
         
         
         //UpdateBalance(to, amt, false);
-        modified_accounts_.insert(to);
+        {
+            std::lock_guard<std::mutex> lock(modified_accounts_mutex_);
+            modified_accounts_.insert(to);
+        }
     }
     else if (two_pc_status == "COORD") {
         int og = accounts_[from];
@@ -1182,7 +1235,10 @@ bool PaxosNode::ExecuteTransaction(const paxos::ClientRequest& request, int seqn
         }
         
         //UpdateBalance(from, amt, true);
-        modified_accounts_.insert(from);
+        {
+            std::lock_guard<std::mutex> lock(modified_accounts_mutex_);
+            modified_accounts_.insert(from);
+        }
         LOG << "Node " << node_id_ << ": executed 2PC COORD transaction, seqnum:" << seqnum
                   << " " << from << " -> " << to << " amount " << amt 
                   << " original balance was " << og << ", new balance is " << accounts_[from] << std::endl;
@@ -1220,11 +1276,14 @@ void PaxosNode::BroadcastCommit(const paxos::CommitEntry& entry) {
 }
 
 // Send reply back to the original client
-void PaxosNode::SendClientReply(SendClientRequestCallData* call_data, int seq_num, bool success) {
+void PaxosNode::SendClientReply(SendClientRequestCallData* call_data,
+                                const paxos::ClientRequest& fallback_request,
+                                int seq_num, bool success) {
     
     if (!alive_.load()) return;
     
-    const paxos::ClientRequest& request = call_data->GetRequest();
+    // call_data is null for entries inherited via NEW-VIEW; use what the caller passed.
+    const paxos::ClientRequest& request = call_data ? call_data->GetRequest() : fallback_request;
 
     if (request.client_id() == "NO-OP") return;
 
@@ -1334,9 +1393,15 @@ void PaxosNode::RespondAndClearNewViewCallData() {
 void PaxosNode::HandleNewView(const paxos::NewViewRequest& request, NewViewCallData* call_data) {
     if (!alive_.load()) return;
 
+    std::string log_snapshot;
+    {
+        // see comment in handlepromise
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        log_snapshot = PaxosNode::AcceptLogToString(accept_log_);
+    }
     {
         std::lock_guard<std::mutex> lock(printlog_mutex_);
-        print_log_ += "<NEW-VIEW, (" + std::to_string(request.ballot().counter()) + "," + std::to_string(request.ballot().node_id()) + ")," + PaxosNode::AcceptLogToString(accept_log_) + "> \n";
+        print_log_ += "<NEW-VIEW, (" + std::to_string(request.ballot().counter()) + "," + std::to_string(request.ballot().node_id()) + ")," + log_snapshot + "> \n";
         new_view_logs_.push_back(request);
     }
 
@@ -1468,11 +1533,25 @@ void PaxosNode::HandleAccept(const paxos::Ack& ack) { //, paxos::TransactionAck*
         return; // only leader processes accept acks
     }
 
+    std::string from_acc, to_acc;
+    float amount = 0.0f;
+    bool have_entry = false;
     {
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        auto it = accept_log_.find(ack.seqnum());
+        if (it != accept_log_.end()) {
+            const paxos::ClientRequest& req = it->second.request();
+            from_acc = req.from_account();
+            to_acc = req.to_account();
+            amount = req.amount();
+            have_entry = true;
+        }
+    }
+    if (!have_entry) {
+        LOGERR << "[Leader] Node " << node_id_ << " AcceptAck for seqnum " << ack.seqnum()
+               << " has no accept_log_ entry (post-view-change or post-reset?)" << std::endl;
+    } else {
         std::lock_guard<std::mutex> lock(printlog_mutex_);
-        std::string from_acc = accept_log_[ack.seqnum()].request().from_account();
-        std::string to_acc = accept_log_[ack.seqnum()].request().to_account();
-        float amount = accept_log_[ack.seqnum()].request().amount();
         print_log_ += "<ACCEPTED, (" + std::to_string(ack.ballot().counter()) + ", " + std::to_string(ack.ballot().node_id()) + "), " + std::to_string(ack.seqnum()) + ", (" + from_acc + ", " + to_acc + ", " + std::to_string(amount) + "), " + std::to_string(ack.node_id()) + "> \n";
     }
 
@@ -1577,9 +1656,14 @@ void PaxosNode::SendNewView() {
         }
 
         if (peer_id == node_id_) {
+            std::string log_snapshot;
+            {
+                std::lock_guard<std::mutex> lock(log_mutex_);
+                log_snapshot = PaxosNode::AcceptLogToString(accept_log_);
+            }
             {
                 std::lock_guard<std::mutex> lock(printlog_mutex_);
-                print_log_ += "<NEW-VIEW, (" + std::to_string(request.ballot().counter()) + "," + std::to_string(request.ballot().node_id()) + ")," + PaxosNode::AcceptLogToString(accept_log_) + "> \n"; // log its own new view
+                print_log_ += "<NEW-VIEW, (" + std::to_string(request.ballot().counter()) + "," + std::to_string(request.ballot().node_id()) + ")," + log_snapshot + "> \n"; // log its own new view
             }
             {
                 std::lock_guard<std::mutex> lock(log_mutex_);
@@ -1602,15 +1686,23 @@ void PaxosNode::SendPrepare(Ballot new_ballot) {
     {
         std::lock_guard<std::mutex> lock(election_mutex_);
         current_ballot_ = new_ballot;
+        if (new_ballot > highest_promised_ballot_) {
+            highest_promised_ballot_ = new_ballot;
+        }
         last_prepare_received_ = std::chrono::steady_clock::now(); //recevies its own prepare
         in_election_ = true;
     }
 
     LOG << "Node " << node_id_ << " sending PREPARE with ballot " << new_ballot.ToString() << std::endl;
 
+    std::string log_snapshot;
+    {
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        log_snapshot = PaxosNode::AcceptLogToString(accept_log_);
+    }
     { // log your own prepare
         std::lock_guard<std::mutex> lock(printlog_mutex_);
-        print_log_ += "<ACK, (" + std::to_string(new_ballot.counter) + "," + std::to_string(new_ballot.node_id) + "), "+ AcceptLogToString(accept_log_) + "> \n";
+        print_log_ += "<ACK, (" + std::to_string(new_ballot.counter) + "," + std::to_string(new_ballot.node_id) + "), "+ log_snapshot + "> \n";
     }
 
     // Send PrepareRequest to all peers (not including self)
@@ -1690,7 +1782,10 @@ void PaxosNode::StartElectionTimer() {
 
             // Call timeout handler outside of the lock
             if (timed_out && alive_.load()) {
-                LOG << " Calling OnElectionTimeout for node " << node_id_ << std::endl;
+                LOG << " Calling OnElectionTimeout for node " << node_id_
+                    << "; last heartbeat "
+                    << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - last_heartbeat_received_).count()
+                    << " ms ago" << std::endl;
 
                 RespondAndClearNewViewCallData(); // safe: nulls member before Respond, so no double-Finish
                 OnElectionTimeout();
@@ -1905,7 +2000,7 @@ void PaxosNode::HeartbeatLoop() {
                 new AsyncHeartbeatCall(stub, hb, client_cq_.get());
             }
         }
-        heartbeat_cv_.wait_for(lock, std::chrono::milliseconds(1000),
+        heartbeat_cv_.wait_for(lock, std::chrono::milliseconds(250),
                                [this] { return !heartbeat_running_.load(); });
     }
 }
@@ -2138,7 +2233,14 @@ void PaxosNode::HandleSendNodeInfo(const paxos::InfoRequest& request, paxos::Nod
         reply->set_print_log(print_log_);
     }
     else if (request.print_db()){
-        for (const auto& account : modified_accounts_) {
+        // copy under the lock and release before touching the protobuf: this runs on a gRPC
+        // handler thread, and holding the lock across reply serialisation would block every ExecuteTransaction on the node.
+        std::set<int> accounts_snapshot;
+        {
+            std::lock_guard<std::mutex> lock(modified_accounts_mutex_);
+            accounts_snapshot = modified_accounts_;
+        }
+        for (const auto& account : accounts_snapshot) {
             
             float balance = accounts_[account];
             auto* entry = reply->add_database();
@@ -2244,12 +2346,16 @@ void PaxosNode::HandleMoveOn(const paxos::MoveOnRequest& request,
 
 
 
-void PaxosNode::SendReplyToCoordLeader( SendClientRequestCallData* call_data, int seq_num, std::string two_pc_status) {
+void PaxosNode::SendReplyToCoordLeader( SendClientRequestCallData* call_data,
+                                        const paxos::ClientRequest& fallback_request,
+                                        int seq_num, std::string two_pc_status) {
 
 
     if (!alive_.load()) return;
     
-    const paxos::ClientRequest& request = call_data ? call_data->GetRequest() : accept_log_[seq_num].m();
+    // Use what the caller handed us instead of accept_log_[seq_num].m(), which was blank for
+    // NEW-VIEW-merged entries and crashed the std::stoi(from_account()) below.
+    const paxos::ClientRequest& request = call_data ? call_data->GetRequest() : fallback_request;
 
 
     if (request.client_id() == "NO-OP") return;
@@ -2310,9 +2416,14 @@ void PaxosNode::HandlePreparedAndAborted(const paxos::TwoPCMsg& msg) {
     LOG << "[Node " << node_id_ << "] is_coord = " << is_coord << std::endl;
     int ts = msg.m().timestamp();
     if (is_coord) {
+        int seq_for_ts;
+        {
+            std::lock_guard<std::mutex> dlock(digest_to_seqnum_mutex_);
+            seq_for_ts = digest_to_seqnum_[ts];
+        }
         {
             std::lock_guard<std::mutex> lock(executed_entries_mutex_);
-            if (executed_entries_.find(digest_to_seqnum_[ts]) != executed_entries_.end()) {
+            if (executed_entries_.find(seq_for_ts) != executed_entries_.end()) {
                 LOG << "[Node " << node_id_ << "] Has executed 1st phase for timestamp " 
                         << ts << ", can start 2nf phase" << std::endl;
                 StartSecondPhase(msg);
@@ -2369,7 +2480,20 @@ void PaxosNode::StartSecondPhase(paxos::TwoPCMsg msg) {
 
 
 
-    paxos::AcceptedEntry old_accept = accept_log_[digest_to_seqnum_[msg.m().timestamp()]];
+    // Was an unlocked accept_log_[digest_to_seqnum_[ts]]; a racing writer could return a
+    // wrong/blank seqnum here, silently stranding the account lock forever.
+    // Fetched via its own leaf lock, before log_mutex_, never nested.
+    int seq_for_ts;
+    {
+        std::lock_guard<std::mutex> dlock(digest_to_seqnum_mutex_);
+        seq_for_ts = digest_to_seqnum_[msg.m().timestamp()];
+    }
+    paxos::AcceptedEntry old_accept;
+    {
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        auto oit = accept_log_.find(seq_for_ts);
+        if (oit != accept_log_.end()) old_accept = oit->second;
+    }
 
     // create accept message
     paxos::AcceptedEntry accept_msg;
@@ -2404,7 +2528,7 @@ void PaxosNode::StartSecondPhase(paxos::TwoPCMsg msg) {
     }
 
     {
-        std::lock_guard<std::mutex> lock(quorum_mutex_);
+        std::lock_guard<std::mutex> lock(quorum_mutex_); // old_accept now read under log_mutex_ above, see comment there
         accepted_count_two_pc_commit_[old_accept.seqnum()][old_accept.ballot().counter()].insert(node_id_);
     }
 
@@ -2524,7 +2648,7 @@ void PaxosNode::ExecuteRepeatedTwoPCEntry(const paxos::CommitEntry& entry) {
         }
         else if (two_pc_status == "C") {
             // send reply to coord
-            SendReplyToCoordLeader(nullptr, entry.seqnum(), "C");
+            SendReplyToCoordLeader(nullptr, entry.m(), entry.seqnum(), "C");
 
         }
         else if (two_pc_status == "A_COORD") {
@@ -2532,7 +2656,7 @@ void PaxosNode::ExecuteRepeatedTwoPCEntry(const paxos::CommitEntry& entry) {
 
         }
         else if (two_pc_status == "A_PART_COMMIT") {
-            SendReplyToCoordLeader(nullptr, entry.seqnum(), "A_PART_COMMIT");
+            SendReplyToCoordLeader(nullptr, entry.m(), entry.seqnum(), "A_PART_COMMIT");
         }
     }
 
@@ -2632,16 +2756,34 @@ void PaxosNode::HandlePreparedTimeout(int timestamp) {
                << std::endl;
 
 
+    // digest_to_seqnum_ is fetched once via its own leaf lock, then accept_log_ separately 
+    // under log_mutex_, so the two locks are never held together.
+    int seq_for_ts;
+    {
+        std::lock_guard<std::mutex> dlock(digest_to_seqnum_mutex_);
+        seq_for_ts = digest_to_seqnum_[timestamp];
+    }
     paxos::AcceptedEntry acc_entry;
-    acc_entry.CopyFrom(accept_log_[digest_to_seqnum_[timestamp]]);
+    {
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        auto ait = accept_log_.find(seq_for_ts);
+        if (ait != accept_log_.end()) acc_entry.CopyFrom(ait->second);
+    }
     acc_entry.mutable_m()->CopyFrom(in_flight_two_pc_prepares_[timestamp].msg.m());
     acc_entry.set_two_pc_status("A_COORD");
-    acc_entry.set_seqnum(digest_to_seqnum_[timestamp]);
+    acc_entry.set_seqnum(seq_for_ts);
 
-    //Log As Acceted 
+    //Log As Acceted
     {
         std::lock_guard<std::mutex> lock(log_mutex_);
         accept_log_[acc_entry.seqnum()] = acc_entry;
+    }
+
+    // Without this self-count, quorum needs both backups to ack instead of one, and a lost
+    // backup ack means this seqnum never reaches quorum -- stranding its account lock forever.
+    {
+        std::lock_guard<std::mutex> lock(quorum_mutex_);
+        accepted_count_two_pc_commit_[acc_entry.seqnum()][acc_entry.ballot().counter()].insert(node_id_);
     }
 
     // send to backups
@@ -2709,7 +2851,10 @@ void PaxosNode::ResetNode() {
 
     executed_entries_.clear();
     executed_two_pc_.clear();
-    modified_accounts_.clear();
+    {
+        std::lock_guard<std::mutex> lock(modified_accounts_mutex_);
+        modified_accounts_.clear();
+    }
     accepted_count_two_pc_commit_.clear();
     digest_to_seqnum_.clear();
     wal_.clear();

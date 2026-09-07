@@ -205,7 +205,13 @@ private:
 
     bool ExecuteTransaction(const paxos::ClientRequest& request, int seqnum, std::string two_pc_status="");
     void BroadcastCommit(const paxos::CommitEntry& entry);
-    void SendClientReply(SendClientRequestCallData* call_data, int seq_num, bool success);
+    
+    // fallback_request covers call_data == nullptr (entry inherited across a view change,
+    // reply handle died with the old leader). Without it the client is never replied to
+    // and the run hangs waiting for remaining_transactions to drain.
+    void SendClientReply(SendClientRequestCallData* call_data,
+                         const paxos::ClientRequest& fallback_request,
+                         int seq_num, bool success);
     void SequentiallyExecuteCommittedEntries();
 
     // Timer for leader election
@@ -223,8 +229,13 @@ private:
     bool election_reset_ = false; // timer shoudl restart
 
     // Parameters
-    std::chrono::milliseconds base_timeout_{2000}; //3000
-    std::chrono::milliseconds jitter_{500}; 
+    std::chrono::milliseconds base_timeout_{1000}; //3000
+    std::chrono::milliseconds jitter_{300}; 
+
+    // Last heartbeat from the leader; logged on election timeout to tell a real timeout
+    // apart from a spurious one (timer not resetting).
+    std::chrono::steady_clock::time_point last_heartbeat_received_ =
+        std::chrono::steady_clock::now();
 
     // Cooldown timer to prevent rapid successive Prepare requests
     std::chrono::steady_clock::time_point last_prepare_received_;
@@ -293,7 +304,10 @@ private:
     bool alive_before_prompt_ = true; // to track if node was alive before prompt since its shut to dead during prompt
 
 
-    // new 
+    // Guards modified_accounts_: HandleSendNodeInfo iterates it while ExecuteTransaction
+    // inserts and ResetNode clears it, and an unsynchronized iteration over a concurrently
+    // rebalanced/cleared std::set segfaults.
+    std::mutex modified_accounts_mutex_;
     std::set<int> modified_accounts_;
     std::vector<std::mutex> balance_locks_{9000 + 1};
     std::unordered_map<int, int> shard_map_; // map of account_id to cluster_id
@@ -304,7 +318,17 @@ private:
     std::mutex wal_mutex_;
     std::map<int, int> cluster_leaders_; // map of cluster_id to leader node_id
 
-    void SendReplyToCoordLeader(SendClientRequestCallData* call_data, int seq_num, std::string two_pc_status);
+    // fallback_request covers call_data == nullptr (entry inherited across a view change).
+    // Callers must pass it explicitly rather than re-deriving it from accept_log_[seq].m(),
+    // which is empty for NEW-VIEW-merged entries and crashed std::stoi("") downstream.
+    void SendReplyToCoordLeader(SendClientRequestCallData* call_data,
+                                const paxos::ClientRequest& fallback_request,
+                                int seq_num, std::string two_pc_status);
+    // Leaf lock only -- never held alongside another lock, since callers reach this via
+    // several different ambient locks and nesting could deadlock. Unguarded access here
+    // used to let a phase-2 accept read a stale/wrong seqnum, silently stranding an
+    // account lock forever with no crash or error.
+    std::mutex digest_to_seqnum_mutex_;
     std::unordered_map<int, int> digest_to_seqnum_; // map of digest to seqnum for 2pc
 
     void ExecuteRepeatedTwoPCEntry(const paxos::CommitEntry& entry);

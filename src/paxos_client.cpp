@@ -271,6 +271,7 @@ void PaxosClient::HandleLeaderReply(const paxos::ClientReply& reply) {
     LOG << "[CLIENT " << client_id_ << "] Received reply from leader (ts="
               << reply.timestamp() << ")\n";
 
+    bool was_pending = false; // new 
     {
         std::lock_guard<std::mutex> lock(pending_mutex_);
 
@@ -280,6 +281,7 @@ void PaxosClient::HandleLeaderReply(const paxos::ClientReply& reply) {
         if (it != inflight_.end()) {
             //LOG << "[CLIENT " << client_id_ << "] Matching pending request found (ts="
             //          << reply.timestamp() << "), removing from pending list.\n";
+            was_pending = true; // new 
             it->second->completed.store(true); // shared ptr could still hold a reference in snapshot
             inflight_.erase(it);
             pending_cv_.notify_one();
@@ -300,7 +302,8 @@ void PaxosClient::HandleLeaderReply(const paxos::ClientReply& reply) {
 
 
     // Decrement remaining transactions
-    if (reply.from_this_term()) {
+    if (was_pending) { // used to be reply.from_this_term() but the new change sets us up for 
+                       // intra txn leader failures which i will implement later on 
         extern std::atomic<int> remaining_transactions;  
         --remaining_transactions;
         LOG << "[CLIENT " << client_id_ << "] decrementing total transactions. Remaining transactions: " 

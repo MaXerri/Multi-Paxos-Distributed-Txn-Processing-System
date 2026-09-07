@@ -16,6 +16,10 @@
 #include <sys/select.h>
 #include <unistd.h>
 #include <cstdio>
+#include <exception>
+#include <execinfo.h>
+#include <csignal>
+#include <cstring>
 
 
 std::atomic<int> remaining_transactions{0};
@@ -448,9 +452,37 @@ std::unordered_map<int, int> MakeShardMap(int total_items, int num_clusters) {
 
 
 
+// Dump the in-memory LOG ring (PAXOS_TRACE_RING builds; a no-op otherwise).
+// A stall crashes nothing, so nothing else would ever trigger a dump:
+// `kill -USR1 <node pid>` prints that node's ring and lets it keep running.
+static void DumpTraceSignalHandler(int) {
+    if constexpr (kTraceRing) loginternal::ring_dump(STDERR_FILENO);
+}
+
+// pytest tears a failed test down by closing the pty, which SIGHUPs the whole foreground
+// process group -- every node dies before run_test_100.sh can ask for a dump. Dump here,
+// then restore the default disposition and re-raise so teardown proceeds normally.
+static void HangupDumpHandler(int sig) {
+    if constexpr (kTraceRing) loginternal::ring_dump(STDERR_FILENO);
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+static void InstallTraceDumpHandlers() {
+    signal(SIGUSR1, DumpTraceSignalHandler);
+    signal(SIGHUP,  HangupDumpHandler);
+    signal(SIGTERM, HangupDumpHandler);
+    // SIGABRT: libc++abi's default terminate handler calls abort() on an uncaught
+    // exception (e.g. std::stoi("") in ExecuteRepeatedTwoPCEntry) with no ring dump,
+    // so a crash currently loses all trace context. Same handler as above: dump,
+    // restore default, re-raise so the OS still produces its usual crash report.
+    signal(SIGABRT, HangupDumpHandler);
+    signal(SIGSEGV, HangupDumpHandler);
+}
 
 
 int main(int argc, char* argv[]) {
+    InstallTraceDumpHandlers();
 
     if (argc != 9) {
         std::cerr << "Usage: " << argv[0] << " <num_nodes>\n";
