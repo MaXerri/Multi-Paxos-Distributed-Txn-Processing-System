@@ -210,12 +210,9 @@ void PaxosClient::BroadcastRequest(
 void PaxosClient::PollCompletionQueue() {
     void* tag;
     bool ok;
-    while (running_) {
-        if (cq_->Next(&tag, &ok)) {
-            if (tag) {
-                auto* call = static_cast<AsyncCall*>(tag);
-                call->OnComplete(ok);
-            }
+    while (cq_->Next(&tag, &ok)) {
+        if (tag) {
+            static_cast<AsyncCall*>(tag)->OnComplete(ok);
         }
     }
 }
@@ -258,8 +255,8 @@ void PaxosClient::StopServer() {
 void PaxosClient::PollServerQueue() {
     void* tag;
     bool ok;
-    while (running_) {
-        if (server_cq_->Next(&tag, &ok) && tag != nullptr && ok) {
+    while (server_cq_->Next(&tag, &ok)) {
+        if (tag != nullptr && ok) {
             static_cast<AsyncServerCall*>(tag)->Proceed();
         }
     }
