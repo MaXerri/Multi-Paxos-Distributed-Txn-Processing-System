@@ -76,49 +76,44 @@ void PaxosClient::SetRequestTimestamp(paxos::ClientRequest& request) {
 
 // ----------------- Timer loop -----------------
 void PaxosClient::TimerLoop() {
-while (true) {
-    std::unique_lock<std::mutex> lock(pending_mutex_);
-    
-    if (stop_timer_) break;
+    struct Due { std::shared_ptr<PendingRequest> req; bool first_send; };
+    while (true) {
+        std::vector<Due> due;
+        {
+            std::unique_lock<std::mutex> lock(pending_mutex_);
+            if (stop_timer_) break;
 
-    while (!timer_heap.empty()) {
-        auto req = timer_heap.top();
+            auto now = std::chrono::steady_clock::now();
+            while (!timer_heap.empty()) {
+                auto req = timer_heap.top();
+                if (req->completed.load()) { timer_heap.pop(); continue; }   // lazy deletion
+                if (req->expiry > now) break;
+                timer_heap.pop();
+                bool first = !req->active.load();
+                if (first) req->active.store(true);
+                req->expiry = now + retry_interval_;
+                due.push_back({req, first});
+            }
+            for (auto& d : due) timer_heap.push(d.req);   // reschedule under the lock
 
-        // Lazy deletion: completed requests
-        if (req->completed.load()) {
-            timer_heap.pop();  // just remove it
-            continue;
+            if (due.empty()) {
+                if (timer_heap.empty()) pending_cv_.wait(lock);
+                else pending_cv_.wait_until(lock, timer_heap.top()->expiry);
+                continue;
+            }
+        }   // lock released: sends below must not hold pending_mutex_, or HandleLeaderReply starves
+
+        for (auto& d : due) {
+            if (d.req->completed.load()) continue;
+            if (d.first_send) {
+                LOG << "[Client " << client_id_ << "] Sending request (ts="
+                          << d.req->request.timestamp() << ") from " << d.req->request.from_account() << std::endl;
+                SendToLeader(d.req->request, nullptr);
+            } else {
+                BroadcastRequest(d.req->request, nullptr);
+            }
         }
-
-        auto now = std::chrono::steady_clock::now();
-        if (req->expiry > now) {
-            // Wait until next request expiry
-            pending_cv_.wait_until(lock, req->expiry);
-            break;  // check again after waking
-        }
-
-        // Timer expired, send/broadcast
-        timer_heap.pop();  // remove it before retry
-        if (!req->active.load()) {
-            req->active.store(true);
-            req->expiry = now + retry_interval_;
-            LOG << "[Client " << client_id_ << "] Sending request (ts=" 
-                      << req->request.timestamp() << ") from " << req->request.from_account() << std::endl;
-            SendToLeader(req->request, nullptr);
-        } else {
-            req->expiry = now + retry_interval_;
-            BroadcastRequest(req->request, nullptr);
-        }
-
-        // push it back with updated expiry
-        timer_heap.push(req);
     }
-
-    // If heap is empty, just wait for new requests
-    if (timer_heap.empty()) {
-        pending_cv_.wait(lock);
-    }
-}
 }
 
 // handles a sendrequest. Moreso queues the request and lets the timer thread handle sending/retries

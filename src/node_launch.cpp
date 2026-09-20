@@ -766,9 +766,6 @@ int main(int argc, char* argv[]) {
             else {
                 handling = 200;
             }
-            if (num % handling == 0 && num!= 0) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(180));
-            }
 
             LOG << "Initiating transaction of " << amount
                     << " dollars from node " << from_node
