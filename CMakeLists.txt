@@ -13,6 +13,9 @@ project(PaxosGRPC CXX)
 # Trace logging is OFF by default (LOG statements compiled out for zero overhead).
 # Enable with: cmake -S . -B build_trace -DPAXOS_TRACE=ON
 option(PAXOS_TRACE "Compile in LOG trace statements" OFF)
+# Ring mode: LOG to a lock-free in-memory buffer (preserves timing-sensitive bugs);
+# dumped on SIGUSR1/SIGHUP/SIGTERM.  cmake -S . -B build_ring -DPAXOS_TRACE_RING=ON
+option(PAXOS_TRACE_RING "Capture LOG traces in an in-memory ring, dumped on SIGUSR1" OFF)
 
 find_package(gRPC REQUIRED)
 find_package(Protobuf REQUIRED)
@@ -31,6 +34,9 @@ add_executable(paxos_node
 )
 if(PAXOS_TRACE)
     target_compile_definitions(paxos_node PRIVATE PAXOS_TRACE)
+endif()
+if(PAXOS_TRACE_RING)
+    target_compile_definitions(paxos_node PRIVATE PAXOS_TRACE_RING)
 endif()
 
 # Find where Homebrew installed libc++:
