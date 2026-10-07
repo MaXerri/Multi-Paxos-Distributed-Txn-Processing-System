@@ -107,7 +107,7 @@ void PaxosNode::Run() {
     LOG<<"All Handlers initialized" << std::endl;
     
     // start server side event loop threads
-    int numThreads = 2 ; // pool 
+    int numThreads = 5 ; // pool 
     std::vector<std::thread> threads;
     for (int i = 0; i < numThreads; ++i) {
         threads.emplace_back([this] {  
