@@ -107,7 +107,7 @@ void PaxosNode::Run() {
     LOG<<"All Handlers initialized" << std::endl;
     
     // start server side event loop threads
-    int numThreads = 5 ; // pool 
+    int numThreads = 8 ; // pool 
     std::vector<std::thread> threads;
     for (int i = 0; i < numThreads; ++i) {
         threads.emplace_back([this] {  
@@ -173,7 +173,7 @@ void PaxosNode::HandleClientRequest(const paxos::ClientRequest& request, SendCli
         return;
     }
 
-    {
+    if constexpr (kPrintLog) {
         std::lock_guard<std::mutex> lock(printlog_mutex_);
         print_log_ += "<REQUEST, (" + request.from_account() + ", " + request.to_account() + ", " + std::to_string(request.amount()) + "), " + std::to_string(request.timestamp()) + ", " + request.from_account() + "> \n";
     }
@@ -473,7 +473,7 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
         std::lock_guard<std::mutex> lock(log_mutex_);
         accept_log_[accept_msg.seqnum()] = accept_msg;
     }
-    {
+    if constexpr (kPrintLog) {
         std::lock_guard<std::mutex> lock(printlog_mutex_);
         print_log_ += "<ACCEPTED, (" + std::to_string(accept_msg.ballot().counter()) + ", " + std::to_string(accept_msg.ballot().node_id()) + "), " + std::to_string(seqnum) + ", (" + accept_msg.request().from_account() + ", " + accept_msg.request().to_account() + ", " + std::to_string(accept_msg.request().amount()) + "), " + std::to_string(node_id_) + "> \n";
     }
@@ -502,7 +502,7 @@ void PaxosNode::HandlePrepare(const paxos::PrepareRequest& request, PrepareCallD
 
     if (!alive_.load()) {return;} 
 
-    {
+    if constexpr (kPrintLog) {
         std::lock_guard<std::mutex> lock(printlog_mutex_);
         print_log_ += "<PREPARE, (" + std::to_string(request.ballot().counter()) + "," + std::to_string(request.ballot().node_id()) + ")> \n";
     }
@@ -603,16 +603,16 @@ void PaxosNode::SendPromise() {
 void PaxosNode::HandlePromise(const paxos::PromiseResponse& reply) {
     if (!alive_.load()) return; 
 
-    std::string log_snapshot;
-    {
-        // accept_log_ is guarded by log_mutex_, not printlog_mutex_. Snapshot under the
-        // correct lock: AcceptLogToString() walks the whole map, and iterating it while
-        // another thread inserts under log_mutex_ is undefined behaviour, not a stale read.
-        // The two locks are never held simultaneously, so no ordering hazard is added.
-        std::lock_guard<std::mutex> lock(log_mutex_);
-        log_snapshot = PaxosNode::AcceptLogToString(accept_log_);
-    }
-    {
+    if constexpr (kPrintLog) {
+        std::string log_snapshot;
+        {
+            // accept_log_ is guarded by log_mutex_, not printlog_mutex_. Snapshot under the
+            // correct lock: AcceptLogToString() walks the whole map, and iterating it while
+            // another thread inserts under log_mutex_ is undefined behaviour, not a stale read.
+            // The two locks are never held simultaneously, so no ordering hazard is added.
+            std::lock_guard<std::mutex> lock(log_mutex_);
+            log_snapshot = PaxosNode::AcceptLogToString(accept_log_);
+        }
         std::lock_guard<std::mutex> lock(printlog_mutex_);
         print_log_ += "<ACK, (" + std::to_string(reply.ballot().counter()) + ", " + std::to_string(reply.ballot().node_id()) + "), " + log_snapshot + "> \n";
     }
@@ -822,7 +822,7 @@ void PaxosNode::HandlePropose(const paxos::AcceptedEntry& request, paxos::Ack* r
     }
 
 
-    {
+    if constexpr (kPrintLog) {
         std::lock_guard<std::mutex> lock(printlog_mutex_);
         print_log_ += "<ACCEPT, (" + std::to_string(request.ballot().counter()) + "," + std::to_string(request.ballot().node_id()) + "), " + std::to_string(request.seqnum()) + " (" + request.request().from_account() + ", " + request.request().to_account() + ", " + std::to_string(request.request().amount()) + ")> \n";
     }
@@ -1332,7 +1332,7 @@ void PaxosNode::HandleCommit(const paxos::CommitEntry& request, paxos::Ack* repl
               << " received Commit for seqnum " << request.seqnum()
               << " with ballot (" << request.ballot().counter()
               << "," << request.ballot().node_id() << ")" << std::endl;
-    {
+    if constexpr (kPrintLog) {
         std::lock_guard<std::mutex> lock(printlog_mutex_);
         print_log_ += "<COMMIT, (" + std::to_string(request.ballot().counter()) + "," + std::to_string(request.ballot().node_id()) + "), " +  std::to_string(request.seqnum()) + " (" + request.request().from_account() + ", " + request.request().to_account() + ", " + std::to_string(request.request().amount()) + ")> \n";
     }
@@ -1393,15 +1393,19 @@ void PaxosNode::RespondAndClearNewViewCallData() {
 void PaxosNode::HandleNewView(const paxos::NewViewRequest& request, NewViewCallData* call_data) {
     if (!alive_.load()) return;
 
-    std::string log_snapshot;
-    {
-        // see comment in handlepromise
-        std::lock_guard<std::mutex> lock(log_mutex_);
-        log_snapshot = PaxosNode::AcceptLogToString(accept_log_);
-    }
-    {
+    if constexpr (kPrintLog) {
+        std::string log_snapshot;
+        {
+            // see comment in handlepromise
+            std::lock_guard<std::mutex> lock(log_mutex_);
+            log_snapshot = PaxosNode::AcceptLogToString(accept_log_);
+        }
         std::lock_guard<std::mutex> lock(printlog_mutex_);
         print_log_ += "<NEW-VIEW, (" + std::to_string(request.ballot().counter()) + "," + std::to_string(request.ballot().node_id()) + ")," + log_snapshot + "> \n";
+    }
+    {
+        // new_view_logs_ backs PrintView, so it is kept even when kPrintLog is off.
+        std::lock_guard<std::mutex> lock(log_mutex_);
         new_view_logs_.push_back(request);
     }
 
@@ -1550,7 +1554,7 @@ void PaxosNode::HandleAccept(const paxos::Ack& ack) { //, paxos::TransactionAck*
     if (!have_entry) {
         LOGERR << "[Leader] Node " << node_id_ << " AcceptAck for seqnum " << ack.seqnum()
                << " has no accept_log_ entry (post-view-change or post-reset?)" << std::endl;
-    } else {
+    } else if constexpr (kPrintLog) {
         std::lock_guard<std::mutex> lock(printlog_mutex_);
         print_log_ += "<ACCEPTED, (" + std::to_string(ack.ballot().counter()) + ", " + std::to_string(ack.ballot().node_id()) + "), " + std::to_string(ack.seqnum()) + ", (" + from_acc + ", " + to_acc + ", " + std::to_string(amount) + "), " + std::to_string(ack.node_id()) + "> \n";
     }
@@ -1656,12 +1660,12 @@ void PaxosNode::SendNewView() {
         }
 
         if (peer_id == node_id_) {
-            std::string log_snapshot;
-            {
-                std::lock_guard<std::mutex> lock(log_mutex_);
-                log_snapshot = PaxosNode::AcceptLogToString(accept_log_);
-            }
-            {
+            if constexpr (kPrintLog) {
+                std::string log_snapshot;
+                {
+                    std::lock_guard<std::mutex> lock(log_mutex_);
+                    log_snapshot = PaxosNode::AcceptLogToString(accept_log_);
+                }
                 std::lock_guard<std::mutex> lock(printlog_mutex_);
                 print_log_ += "<NEW-VIEW, (" + std::to_string(request.ballot().counter()) + "," + std::to_string(request.ballot().node_id()) + ")," + log_snapshot + "> \n"; // log its own new view
             }
@@ -1695,12 +1699,12 @@ void PaxosNode::SendPrepare(Ballot new_ballot) {
 
     LOG << "Node " << node_id_ << " sending PREPARE with ballot " << new_ballot.ToString() << std::endl;
 
-    std::string log_snapshot;
-    {
-        std::lock_guard<std::mutex> lock(log_mutex_);
-        log_snapshot = PaxosNode::AcceptLogToString(accept_log_);
-    }
-    { // log your own prepare
+    if constexpr (kPrintLog) { // log your own prepare
+        std::string log_snapshot;
+        {
+            std::lock_guard<std::mutex> lock(log_mutex_);
+            log_snapshot = PaxosNode::AcceptLogToString(accept_log_);
+        }
         std::lock_guard<std::mutex> lock(printlog_mutex_);
         print_log_ += "<ACK, (" + std::to_string(new_ballot.counter) + "," + std::to_string(new_ballot.node_id) + "), "+ log_snapshot + "> \n";
     }
@@ -2229,8 +2233,12 @@ std::string PaxosNode::AcceptLogToString(const std::map<int, paxos::AcceptedEntr
 void PaxosNode::HandleSendNodeInfo(const paxos::InfoRequest& request, paxos::NodeInfo* reply) {
     
     if (request.print_log()) {
-        std::lock_guard<std::mutex> lock(printlog_mutex_);
-        reply->set_print_log(print_log_);
+        if constexpr (kPrintLog) {
+            std::lock_guard<std::mutex> lock(printlog_mutex_);
+            reply->set_print_log(print_log_);
+        } else {
+            reply->set_print_log("(PrintLog compiled out: PAXOS_BENCHMARK build)\n");
+        }
     }
     else if (request.print_db()){
         // copy under the lock and release before touching the protobuf: this runs on a gRPC
@@ -2840,7 +2848,7 @@ void PaxosNode::ResetNode() {
         pending_client_calls_.clear();
     }
 
-    {
+    if constexpr (kPrintLog) {
         std::lock_guard<std::mutex> lock(printlog_mutex_);
         print_log_.clear();
     }

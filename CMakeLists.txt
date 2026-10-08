@@ -16,6 +16,9 @@ option(PAXOS_TRACE "Compile in LOG trace statements" OFF)
 # Ring mode: LOG to a lock-free in-memory buffer (preserves timing-sensitive bugs);
 # dumped on SIGUSR1/SIGHUP/SIGTERM.  cmake -S . -B build_ring -DPAXOS_TRACE_RING=ON
 option(PAXOS_TRACE_RING "Capture LOG traces in an in-memory ring, dumped on SIGUSR1" OFF)
+# Benchmark mode: compile out PrintLog bookkeeping (print_log_ + printlog_mutex_).
+# cmake -S . -B build_perf -DPAXOS_BENCHMARK=ON
+option(PAXOS_BENCHMARK "Compile out PrintLog bookkeeping for benchmark runs" OFF)
 
 find_package(gRPC REQUIRED)
 find_package(Protobuf REQUIRED)
@@ -37,6 +40,9 @@ if(PAXOS_TRACE)
 endif()
 if(PAXOS_TRACE_RING)
     target_compile_definitions(paxos_node PRIVATE PAXOS_TRACE_RING)
+endif()
+if(PAXOS_BENCHMARK)
+    target_compile_definitions(paxos_node PRIVATE PAXOS_BENCHMARK)
 endif()
 
 # Find where Homebrew installed libc++:

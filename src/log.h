@@ -86,6 +86,17 @@ inline constexpr bool kTraceRing =
     false;
 #endif
 
+// Compile-time PrintLog switch. Benchmark builds (-DPAXOS_BENCHMARK) strip every
+// print_log_ append, together with its printlog_mutex_ acquisition and the
+// accept_log_ snapshot taken under log_mutex_ to build it. PrintLog then returns
+// a placeholder instead of the protocol message history.
+inline constexpr bool kPrintLog =
+#ifdef PAXOS_BENCHMARK
+    false;
+#else
+    true;
+#endif
+
 // Thread-safe line logger.
 //
 // Accumulates one full statement into a local ostringstream and emits it to
