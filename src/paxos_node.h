@@ -102,7 +102,7 @@ public:
     void SendAccept(Ballot ballot, int seqNum, const paxos::ClientRequest& request);
     void SendCommit(Ballot ballot, int seqNum, const paxos::ClientRequest& request);
     void SendNewView();
-    void SendAcceptAckToLeader(const paxos::AcceptedEntry& entry);
+    void FillAcceptAck(const paxos::AcceptedEntry& entry, paxos::Ack* ack);
 
     // Handles incoming RPCs
     void HandlePrepare(const paxos::PrepareRequest& request, PrepareCallData* call_data);
@@ -165,6 +165,11 @@ private:
     std::unique_ptr<grpc::CompletionQueue> client_cq_; // for client-side
     std::thread client_cq_thread_;
     std::atomic<bool> client_cq_running_{false};
+
+    // Accept RPCs get their own client-side cq: the backup's ack comes back as the Accept
+    // response, and its OnComplete runs HandleAccept (quorum count + commit)
+    std::unique_ptr<grpc::CompletionQueue> accept_cq_;
+    std::vector<std::thread> accept_cq_threads_;
     
 
     // Paxos state
@@ -194,7 +199,7 @@ private:
 
     // Internal helper functions
     void HandleRpcs(); // single-threaded event loop (server side)
-    void PollClientCompletionQueue(); //for client-side asynch calls
+    void PollClientCompletionQueue(grpc::CompletionQueue* cq); //for client-side asynch calls
 
 
     void BecomeLeader(Ballot ballot);
@@ -376,6 +381,10 @@ private:
     std::mutex queued_mutex_;
 
     std::unordered_set<int> pending_or_completed_ts_; // to avoid reprocessing
+    
+    // Guards pending_or_completed_ts_ only. Split from pending_mutex_ so the dedup check every
+    // incoming request makes doesn't queue behind commit/execute. 
+    std::mutex dedup_mutex_;
     
     void InformClustersOfElection();
     

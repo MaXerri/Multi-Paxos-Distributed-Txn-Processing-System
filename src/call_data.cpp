@@ -477,9 +477,7 @@ AcceptClientCallData::AcceptClientCallData(std::shared_ptr<paxos::Paxos::Stub> s
 
 void AcceptClientCallData::OnComplete(bool ok) {
     if (ok && status_.ok()) {
-        // Successfully sent Accept to leader
-        // You could log or update any state if needed
-        // Example: node_->HandleAcceptAck(request_, reply_);
+        node_->HandleAccept(reply_); // backup's ack is the Accept response
     } else {
         std::cerr << "[Client] Failed to send Accept for seq=" << request_.seqnum()
                   << " to leader. Status: " << status_.error_message() << std::endl;

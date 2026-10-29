@@ -118,8 +118,16 @@ void PaxosNode::Run() {
     // Start a separate thread to poll the completion queue for client-side calls   
     client_cq_ = std::make_unique<grpc::CompletionQueue>();
     client_cq_running_.store(true);
-    client_cq_thread_ = std::thread([this]() { this->PollClientCompletionQueue(); });
+    client_cq_thread_ = std::thread([this]() { this->PollClientCompletionQueue(client_cq_.get()); });
     client_cq_thread_.detach();  // independent, runs forever
+
+    // Accept responses carry the backup's ack, so HandleAccept runs on these pollers
+    accept_cq_ = std::make_unique<grpc::CompletionQueue>();
+    int numAcceptPollers = 4;
+    for (int i = 0; i < numAcceptPollers; ++i) {
+        accept_cq_threads_.emplace_back([this]() { this->PollClientCompletionQueue(accept_cq_.get()); });
+        accept_cq_threads_.back().detach();
+    }
 
     // start the thread that checks for commit/prepare retry by the coordinator leader
     retry_thread_ = LaunchTransactionRetryThread();
@@ -134,6 +142,7 @@ void PaxosNode::Run() {
     client_cq_running_.store(false); // stop client CQ polling
     server_->Shutdown(); 
     client_cq_->Shutdown(); 
+    accept_cq_->Shutdown();
     LOG << "Node " << node_id_ << " shutting down." << std::endl;
 }
 
@@ -150,11 +159,11 @@ void PaxosNode::HandleRpcs() {
 }
 
 // Poll function for client-side asyc calls
-void PaxosNode::PollClientCompletionQueue() {
+void PaxosNode::PollClientCompletionQueue(grpc::CompletionQueue* cq) {
     void* tag;
     bool ok;
     while (client_cq_running_.load()) {
-        if (client_cq_->Next(&tag, &ok)) {
+        if (cq->Next(&tag, &ok)) {
             if (!tag) continue;
             auto* call = static_cast<AsyncClientCallBase*>(tag);
             call->OnComplete(ok);
@@ -274,15 +283,17 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
     // This is a fast-path check only -- the later check (right before seqnum
     // assignment) stays, since it's the atomic claim that resolves two genuinely-new
     // requests racing each other for the same brand-new timestamp.
+    bool seen_ts = false;
     {
-        std::lock_guard<std::mutex> lock(pending_mutex_);
-        if (pending_or_completed_ts_.find(request.timestamp()) != pending_or_completed_ts_.end()) {
-            LOG << "Node " << node_id_ << " found existing pending/completed request with timestamp "
-                      << request.timestamp() << " - ignoring duplicate before touching any locks." << std::endl;
-            paxos::TransactionAck reply;
-            call_data->Respond(reply);
-            return;
-        }
+        std::lock_guard<std::mutex> lock(dedup_mutex_);
+        seen_ts = pending_or_completed_ts_.count(request.timestamp()) > 0;
+    }
+    if (seen_ts) {
+        LOG << "Node " << node_id_ << " found existing pending/completed request with timestamp "
+                  << request.timestamp() << " - ignoring duplicate before touching any locks." << std::endl;
+        paxos::TransactionAck reply;
+        call_data->Respond(reply);
+        return;
     }
 
     // check if we have intra-shard txn or not
@@ -376,7 +387,7 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
 
         bool already_pending = false;
         {
-            std::lock_guard<std::mutex> lock(pending_mutex_);
+            std::lock_guard<std::mutex> lock(dedup_mutex_);
             already_pending = pending_or_completed_ts_.count(request.timestamp()) > 0;
         }
         // send to leader of partcipant cluster:
@@ -444,24 +455,31 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
 
     // check if request was received already and is pending 
     // case of a client broadcasting to multiple nodes and backups forwarding 
+    // Atomic claim of the timestamp: of two genuinely-new requests racing on the same ts,
+    // exactly one inserts. Nothing reads pending_or_completed_ts_ expecting pending_entries_
+    // to already hold the entry, so the claim doesn't need pending_mutex_.
+    bool claimed;
+    {
+        std::lock_guard<std::mutex> lock(dedup_mutex_);
+        claimed = pending_or_completed_ts_.insert(request.timestamp()).second;
+    }
+    if (!claimed) {
+        LOG << "Node " << node_id_ << " found existing pending request with timestamp "
+                  << request.timestamp() << " - ignoring duplicate." << std::endl;
+        paxos::TransactionAck reply;
+        call_data->Respond(reply); // clean up the call data
+        return;
+    }
+
     int seqnum;
     {
         std::lock_guard<std::mutex> lock(pending_mutex_);
 
-        if (pending_or_completed_ts_.find(request.timestamp()) != pending_or_completed_ts_.end()) {
-            LOG << "Node " << node_id_ << " found existing pending request with timestamp "
-                      << request.timestamp() << " - ignoring duplicate." << std::endl;
-            paxos::TransactionAck reply;
-            call_data->Respond(reply); // clean up the call data
-            return;
-        }
-      
         seqnum = ++last_seqnum_;
         accept_msg.set_seqnum(seqnum);
 
         // log locally as pending and save call pointer
         std::lock_guard<std::mutex> lock2(quorum_mutex_);
-        pending_or_completed_ts_.insert(request.timestamp());
         pending_entries_[seqnum] = accept_msg; // for future commit on leader end
         pending_client_calls_[seqnum] = call_data; // save call pointer to respond later TODO// FIX!!!!
         accepted_count_[seqnum][current_ballot_.counter].insert(node_id_);
@@ -492,7 +510,7 @@ void PaxosNode::ProcessClientRequest(const paxos::ClientRequest& request, SendCl
         if (peer_id < intra_c_nid_range_.first || peer_id > intra_c_nid_range_.second) {
             continue; 
         }
-        new AcceptClientCallData(stub, client_cq_.get(), this, accept_msg);
+        new AcceptClientCallData(stub, accept_cq_.get(), this, accept_msg);
     }
 
 }
@@ -746,7 +764,7 @@ void PaxosNode::MergeAcceptLogsFromPromises() {
     // 2PCs (COORD/P, no phase2_result) since those are completed by re-driving the retry (deduping
     // them would block completion -- the q8 regression).
     {
-        std::lock_guard<std::mutex> plock(pending_mutex_);
+        std::lock_guard<std::mutex> plock(dedup_mutex_);
         for (const auto& [seq, entry] : accept_log_) {
             const auto& req = entry.request();
             if (req.client_id() == "NO-OP") continue;
@@ -807,7 +825,7 @@ void PaxosNode::InformClustersOfElection() {
             continue; // skip nodes inside cluster
         }
 
-        new AcceptClientCallData(stub, client_cq_.get(), this, entry); // dummy
+        new AcceptClientCallData(stub, accept_cq_.get(), this, entry); // dummy
         
     }}
 
@@ -897,35 +915,30 @@ void PaxosNode::HandlePropose(const paxos::AcceptedEntry& request, paxos::Ack* r
 
     ResetElectionTimer();
 
-    SendAcceptAckToLeader(request);
+    // The ack rides back on the Accept response; the leader handles it in
+    // AcceptClientCallData::OnComplete. Every early return above leaves accepted = false.
+    FillAcceptAck(request, reply);
+    reply->set_accepted(true);
 
-
+    LOG << "[backup Node " << node_id_ << " acking Accept for seqnum "
+              << request.seqnum() << " to leader " << leader_id_ << std::endl;
 }
 
-void PaxosNode::SendAcceptAckToLeader(const paxos::AcceptedEntry& entry) {
-    // only gets called for new entries of the view
+void PaxosNode::FillAcceptAck(const paxos::AcceptedEntry& entry, paxos::Ack* ack) {
+    ack->mutable_ballot()->set_counter(entry.ballot().counter());
+    ack->mutable_ballot()->set_node_id(entry.ballot().node_id());
+    ack->set_seqnum(entry.seqnum());
+    ack->set_node_id(node_id_); // sender ID
 
-    paxos::Ack ack;
-    ack.mutable_ballot()->set_counter(entry.ballot().counter());
-    ack.mutable_ballot()->set_node_id(entry.ballot().node_id());
-    ack.set_seqnum(entry.seqnum());
-    ack.set_node_id(node_id_); // sender ID
-
-    std::string status = entry.two_pc_status();
+    const std::string& status = entry.two_pc_status();
     if (status == "C_COORD" || status == "C" || status == "A_COORD" || status == "A_PART_COMMIT") {
-        ack.set_phase(2);
-        ack.set_status(status);
+        ack->set_phase(2);
+        ack->set_status(status);
     }
     else if (status == "COORD" || status == "P" || status == "A") {
 
-        ack.set_status(status);
+        ack->set_status(status);
     }
-
-
-    auto call = new AsyncAcceptAckCall(peer_stubs_[entry.node_id()], ack, client_cq_.get());
-
-    LOG << "[backup Node " << node_id_ << " sent Accept Ack for seqnum "
-              << entry.seqnum() << " to leader " << leader_id_ << std::endl;
 }
 
 
@@ -1508,6 +1521,7 @@ void PaxosNode::HandleNewView(const paxos::NewViewRequest& request, NewViewCallD
         ack.mutable_ballot()->set_node_id(current_ballot_.node_id); // changed this
         ack.set_seqnum(entry.seqnum());
         ack.set_node_id(node_id_); // sender ID
+        ack.set_accepted(true);
 
         std::string status = entry.two_pc_status();
         if (status == "C_COORD" || status == "C" || status == "A_COORD" || status == "A_PART_COMMIT") {
@@ -1531,6 +1545,9 @@ void PaxosNode::HandleNewView(const paxos::NewViewRequest& request, NewViewCallD
 void PaxosNode::HandleAccept(const paxos::Ack& ack) { //, paxos::TransactionAck* reply
     
     if (!alive_.load()) return; 
+
+    // Rejected, dead-node and new-leader-notice Accept responses come back with accepted = false
+    if (!ack.accepted()) return;
 
     if (role_ != Role::LEADER) { // for accept acks send by demoted leader 
         LOG << "[IRGNORING] Node " << node_id_ << " not LEADER but received an Accept Ack from Node " << ack.node_id() << std::endl;
@@ -2545,7 +2562,7 @@ void PaxosNode::StartSecondPhase(paxos::TwoPCMsg msg) {
         if (peer_id < intra_c_nid_range_.first || peer_id > intra_c_nid_range_.second) {
             continue; // skip nodes outside cluster
         }
-        new AcceptClientCallData(stub, client_cq_.get(), this, accept_msg);
+        new AcceptClientCallData(stub, accept_cq_.get(), this, accept_msg);
     }
 
 
@@ -2800,7 +2817,7 @@ void PaxosNode::HandlePreparedTimeout(int timestamp) {
         if (peer_id < intra_c_nid_range_.first || peer_id > intra_c_nid_range_.second) {
             continue; // skip nodes outside cluster
         }
-        new AcceptClientCallData(stub, client_cq_.get(), this, acc_entry);
+        new AcceptClientCallData(stub, accept_cq_.get(), this, acc_entry);
     }
 
 

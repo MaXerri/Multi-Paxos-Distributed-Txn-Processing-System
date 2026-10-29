@@ -4,3 +4,5 @@ kahypar/
 __pycache__/
 tests/database
 .pytest_cache/
+# regenerated on every benchmark-mode run
+tests/test_data/benchmark.csv
